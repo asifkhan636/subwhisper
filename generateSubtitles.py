@@ -373,7 +373,7 @@ def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
         language=ARGS.get("language"),
     )
     VAD_MODEL = load_vad_model(
-        DEVICE,
+        getattr(DEVICE, "type", DEVICE),
         ARGS["vad_model"],
         vad_options={"onset": ARGS["vad_onset"], "offset": ARGS["vad_offset"]},
     )

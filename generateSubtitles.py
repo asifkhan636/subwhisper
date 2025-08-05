@@ -224,11 +224,11 @@ def main() -> None:
     logging.info("Using device: %s", device)
 
     model = whisperx.load_model(args.model_size, device, compute_type=compute_type)
-    # ``load_vad_model`` initializes the pyannote VAD pipeline with optional thresholds.
+    # ``load_vad_model`` initializes the pyannote VAD pipeline with optional onset/offset parameters.
     vad_model = load_vad_model(
+        device,
         args.vad_model,
-        vad_options={"vad_onset": args.vad_onset, "vad_offset": args.vad_offset},
-        device=device,
+        vad_options={"onset": args.vad_onset, "offset": args.vad_offset},
     )
 
     options: Dict[str, Any] = {}

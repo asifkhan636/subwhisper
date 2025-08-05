@@ -80,6 +80,75 @@ Subtitle files (`.srt` or `.vtt`) will be written alongside the
 corresponding videos by default.  Use `--output-dir` to place them under a
 separate directory while preserving the videos' relative paths.
 
+## Usage Examples
+
+### Basic batch processing
+
+```bash
+python generateSubtitles.py ./videos
+```
+
+Processes every supported video in `./videos` with default settings.
+
+### Selecting a specific audio track
+
+```bash
+python generateSubtitles.py ./videos --audio-track 0
+```
+
+Choose a different audio track when a file contains multiple tracks.
+
+### Changing output format
+
+```bash
+python generateSubtitles.py ./videos --output-format vtt
+```
+
+Create WebVTT subtitles instead of the default SRT files.
+
+### Overriding language
+
+```bash
+python generateSubtitles.py ./videos --language es
+```
+
+Force the transcription language (Spanish in this example) when
+auto-detection is unreliable.
+
+### Word timestamps and diarization
+
+```bash
+python generateSubtitles.py ./videos --word-timestamps --diarize
+```
+
+Embed word-level timing and speaker labels for detailed editing or analysis.
+
+### Parallel workers
+
+```bash
+python generateSubtitles.py ./videos --workers 4
+```
+
+Process videos in parallel with four worker processes to reduce total time.
+
+### Writing to a separate directory
+
+```bash
+python generateSubtitles.py ./videos --output-dir subs/
+```
+
+Store the generated subtitle files under the `subs/` directory while
+preserving each video's relative path.
+
+### Tuning VAD thresholds and model size
+
+```bash
+python generateSubtitles.py ./videos --vad-onset 0.6 --vad-offset 0.4 --model-size large
+```
+
+Adjust the VAD sensitivity and use a larger Whisper model for potentially
+better accuracy at the cost of speed.
+
 ## Logging
 
 After each video is processed a summary entry is appended to
@@ -95,8 +164,9 @@ The CLI exposes a number of switches for customising behaviour:
 - `--audio-track`: select which audio track to extract (default: `1`; use `0` for first track). Run `--list-audio-tracks` to discover track indices
 - `--list-audio-tracks VIDEO`: list audio tracks for a single video and exit
 - `--model-size`: Whisper model size to load
-- `--vad-model`: VAD backend (`silero_vad` by default)
-- `--vad-threshold`: activation threshold for VAD (default: `0.35`)
+- `--vad-model`: VAD backend (`pyannote/segmentation` by default)
+- `--vad-onset`: onset probability threshold for VAD (default: `0.5`)
+- `--vad-offset`: offset probability threshold for VAD (default: `0.363`)
 - `--output-format`: subtitle format (`srt` or `vtt`, default `srt`)
 - `--output-dir`: directory where subtitle files are written; relative paths
   under the input directory are preserved

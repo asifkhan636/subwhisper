@@ -25,6 +25,7 @@ from typing import Iterable, List, Dict, Any
 import torch
 import whisperx
 from whisperx.vads.pyannote import load_vad_model
+from whisperx.audio import SAMPLE_RATE
 
 
 def extract_audio(video_path: Path, audio_track: int, tmp_dir: Path) -> Path:
@@ -86,20 +87,34 @@ def transcribe_file(
         logging.debug("Running VAD to obtain speech segments")
         try:
             speech_segments = vad_model(audio)
+            if not speech_segments:
+                logging.warning("VAD produced no segments; falling back to chunking")
+                speech_segments = None
         except Exception as exc:  # pragma: no cover - best effort for varied APIs
             logging.warning("VAD model failed, proceeding without VAD: %s", exc)
 
     logging.info("Transcribing %s", audio_path)
+    segments: List[Dict[str, Any]] = []
     if speech_segments is not None:
         try:
             result = model.transcribe(audio, segments=speech_segments, **options)
         except TypeError:
             # some versions of WhisperX expect ``speech_chunks`` instead
             result = model.transcribe(audio, speech_chunks=speech_segments, **options)
+        segments = result.get("segments", [])
     else:
-        result = model.transcribe(audio, **options)
-
-    segments = result.get("segments", [])
+        chunk_dur = float(options.get("chunk_duration", 30.0))
+        sr = int(options.get("sample_rate", SAMPLE_RATE))
+        chunk_size = int(chunk_dur * sr)
+        for start in range(0, len(audio), chunk_size):
+            chunk_audio = audio[start:start + chunk_size]
+            result = model.transcribe(chunk_audio, **options)
+            chunk_segments = result.get("segments", [])
+            offset = start / sr
+            for seg in chunk_segments:
+                seg["start"] += offset
+                seg["end"] += offset
+            segments.extend(chunk_segments)
     if diarize_model is not None and speech_segments is not None:
         logging.debug("Running diarization to assign speaker labels")
         try:

@@ -1,0 +1,17 @@
+name: subwhisper
+channels:
+  - pytorch
+  - nvidia  # for optional CUDA packages
+  - conda-forge
+dependencies:
+  - python=3.10
+  - ffmpeg  # optional; alternatively install via system package manager
+  - pip
+  # Uncomment the following line to match your CUDA toolkit version
+  # - pytorch-cuda=11.8  # requires NVIDIA channel
+  - pip:
+      - torch            # install the build matching your CUDA version
+      - pyannote.audio
+      - whisperx
+      # Optional extras
+      - rich             # pretty logging in the terminal

@@ -22,6 +22,19 @@ The script relies on a few external tools and Python packages.
 
 ### Create a Conda Environment
 
+Use the provided `environment.yml` to set up everything in one step:
+
+```bash
+conda env create -f environment.yml
+conda activate subwhisper
+```
+
+This installs Python, `torch`, `pyannote.audio`, `whisperx`, and other
+dependencies.  The `torch` entry is CPU‑only by default; edit
+`environment.yml` to choose a CUDA‑enabled build or add optional packages.
+
+If you prefer to configure things manually:
+
 ```bash
 conda create -n subwhisper python=3.10
 conda activate subwhisper

@@ -453,7 +453,11 @@ def main() -> None:
         default=1,
         help="Audio track index to extract (default: 1; use 0 for first track)",
     )
-    parser.add_argument("--model-size", default="large_v2", help="Whisper model size")
+    parser.add_argument(
+        "--model-size",
+        default="large-v2",
+        help="Whisper model size (e.g., 'base', 'large-v2')",
+    )
     parser.add_argument(
         "--vad-model",
         default="pyannote/segmentation",
@@ -524,6 +528,31 @@ def main() -> None:
         help="Number of parallel worker processes",
     )
     args = parser.parse_args()
+    valid_models = {
+        "tiny.en",
+        "tiny",
+        "base.en",
+        "base",
+        "small.en",
+        "small",
+        "medium.en",
+        "medium",
+        "large-v1",
+        "large-v2",
+        "large-v3",
+        "large",
+        "distil-large-v2",
+        "distil-medium.en",
+        "distil-small.en",
+        "distil-large-v3",
+        "large-v3-turbo",
+        "turbo",
+    }
+    if args.model_size not in valid_models:
+        parser.error(
+            f"Invalid model size '{args.model_size}'. Choose from: {', '.join(sorted(valid_models))}"
+        )
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
     if args.list_audio_tracks:

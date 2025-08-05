@@ -79,6 +79,8 @@ The CLI exposes a number of switches for customising behaviour:
   under the input directory are preserved
 - `--max-line-width`: maximum characters per subtitle line (default: `42`)
 - `--max-lines`: maximum lines per subtitle (default: `2`)
+- `--case`: normalise subtitle text casing (`lower` or `upper`)
+- `--strip-punctuation`: remove punctuation from subtitle text
 - `--language`: override language detection with a code like `en` (default: auto)
 
 ## Potential Enhancements

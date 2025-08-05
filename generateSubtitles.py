@@ -14,6 +14,7 @@ import concurrent.futures
 import gc
 import json
 import logging
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -131,6 +132,8 @@ def write_subtitles(
     fmt: str = "srt",
     max_line_width: int = 42,
     max_lines: int = 2,
+    case: str | None = None,
+    strip_punctuation: bool = False,
 ) -> Path:
     """Write *segments* to *output_path* using the requested subtitle *fmt*.
 
@@ -145,12 +148,26 @@ def write_subtitles(
         Output format. Currently ``"srt"`` and ``"vtt"`` are supported.
     max_line_width, max_lines:
         Controls simple line wrapping of subtitle text.
+    case:
+        Optional case normalization for subtitle text ("lower" or "upper").
+    strip_punctuation:
+        Remove punctuation from subtitle text when ``True``.
     """
     output_path = output_path.with_suffix(f".{fmt}")
     logging.debug("Writing subtitles: %s", output_path)
 
     if fmt not in {"srt", "vtt"}:
         raise ValueError(f"Unsupported subtitle format: {fmt}")
+
+    def _normalize(text: str) -> str:
+        text = " ".join(text.split())
+        if strip_punctuation:
+            text = re.sub(r"[^\w\s]", "", text)
+        if case == "lower":
+            text = text.lower()
+        elif case == "upper":
+            text = text.upper()
+        return text
 
     with output_path.open("w", encoding="utf-8") as f:
         if fmt == "srt":
@@ -164,6 +181,7 @@ def write_subtitles(
                         text = w.get("word", w.get("text", "")).strip()
                         if "speaker" in seg:
                             text = f"{seg['speaker']}: {text}"
+                        text = _normalize(text)
                         text = textwrap.fill(text, width=max_line_width)
                         lines = text.splitlines()[:max_lines]
                         f.write(f"{idx}\n{start} --> {end}\n")
@@ -175,6 +193,7 @@ def write_subtitles(
                     text = seg["text"].strip()
                     if "speaker" in seg:
                         text = f"{seg['speaker']}: {text}"
+                    text = _normalize(text)
                     text = textwrap.fill(text, width=max_line_width)
                     lines = text.splitlines()[:max_lines]
                     f.write(f"{idx}\n{start} --> {end}\n")
@@ -191,6 +210,7 @@ def write_subtitles(
                         text = w.get("word", w.get("text", "")).strip()
                         if "speaker" in seg:
                             text = f"{seg['speaker']}: {text}"
+                        text = _normalize(text)
                         text = textwrap.fill(text, width=max_line_width)
                         lines = text.splitlines()[:max_lines]
                         f.write(f"{start} --> {end}\n")
@@ -201,6 +221,7 @@ def write_subtitles(
                     text = seg["text"].strip()
                     if "speaker" in seg:
                         text = f"{seg['speaker']}: {text}"
+                    text = _normalize(text)
                     text = textwrap.fill(text, width=max_line_width)
                     lines = text.splitlines()[:max_lines]
                     f.write(f"{start} --> {end}\n")
@@ -282,6 +303,8 @@ def process_video(video: Path) -> Dict[str, Any]:
                 fmt=ARGS["output_format"],
                 max_line_width=ARGS["max_line_width"],
                 max_lines=ARGS["max_lines"],
+                case=ARGS.get("case"),
+                strip_punctuation=ARGS.get("strip_punctuation", False),
             )
     except Exception as exc:  # pragma: no cover - pragmatic logging
         logging.exception("Failed to generate subtitles for %s", video)
@@ -352,6 +375,17 @@ def main() -> None:
     )
     parser.add_argument(
         "--max-lines", type=int, default=2, help="Maximum lines per subtitle"
+    )
+    parser.add_argument(
+        "--case",
+        choices=["lower", "upper"],
+        default=None,
+        help="Normalize subtitle text casing",
+    )
+    parser.add_argument(
+        "--strip-punctuation",
+        action="store_true",
+        help="Remove punctuation from subtitle text",
     )
     parser.add_argument(
         "--language",

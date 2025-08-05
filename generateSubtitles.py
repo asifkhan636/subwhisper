@@ -269,9 +269,16 @@ def process_video(video: Path) -> Dict[str, Any]:
                 OPTIONS,
                 DIARIZE_MODEL,
             )
+            output_path = video
+            if ARGS.get("output_dir"):
+                root_dir = Path(ARGS["directory"])
+                rel_path = video.relative_to(root_dir)
+                output_path = Path(ARGS["output_dir"]) / rel_path
+            output_path = output_path.with_suffix("." + ARGS["output_format"])
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             write_subtitles(
                 segments,
-                video.with_suffix("." + ARGS["output_format"]),
+                output_path,
                 fmt=ARGS["output_format"],
                 max_line_width=ARGS["max_line_width"],
                 max_lines=ARGS["max_lines"],
@@ -333,6 +340,11 @@ def main() -> None:
         help="Subtitle output format",
     )
     parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory to write subtitle files to; relative paths are preserved",
+    )
+    parser.add_argument(
         "--max-line-width",
         type=int,
         default=42,
@@ -368,6 +380,10 @@ def main() -> None:
     options: Dict[str, Any] = {"language": args.language}
     if args.word_timestamps:
         options["word_timestamps"] = True
+
+    if args.output_dir:
+        args.output_dir = str(Path(args.output_dir))
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     videos = discover_videos(Path(args.directory), args.extensions)
     if not videos:

@@ -232,7 +232,12 @@ def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
     OPTIONS = options
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     compute_type = "float16" if DEVICE.type == "cuda" else "int8"
-    MODEL = whisperx.load_model(ARGS["model_size"], DEVICE, compute_type=compute_type)
+    MODEL = whisperx.load_model(
+        ARGS["model_size"],
+        DEVICE,
+        compute_type=compute_type,
+        language=ARGS.get("language"),
+    )
     VAD_MODEL = load_vad_model(
         DEVICE,
         ARGS["vad_model"],
@@ -328,7 +333,7 @@ def main() -> None:
     parser.add_argument(
         "--language",
         default=None,
-        help="Override language detection (e.g. 'en')",
+        help="Language for transcription (e.g. 'en'); default: auto-detect",
     )
     parser.add_argument(
         "--word-timestamps",
@@ -349,9 +354,7 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
-    options: Dict[str, Any] = {}
-    if args.language:
-        options["language"] = args.language
+    options: Dict[str, Any] = {"language": args.language}
     if args.word_timestamps:
         options["word_timestamps"] = True
 

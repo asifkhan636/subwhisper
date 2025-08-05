@@ -591,20 +591,55 @@ def main() -> None:
     except Exception:  # pragma: no cover - skip if faster-whisper unavailable
         pass
 
+    # Pre-run model load to surface configuration issues early
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    compute_type = "float16" if device_str == "cuda" else "int8"
+    try:  # pragma: no cover - optional runtime validation
+        _model = whisperx.load_model(
+            args.model_size,
+            device_str,
+            compute_type=compute_type,
+            language=args.language,
+        )
+        _vad = load_vad_model(
+            device_str,
+            args.vad_model,
+            vad_options={"onset": args.vad_onset, "offset": args.vad_offset},
+        )
+    except Exception as exc:  # pragma: no cover - best effort
+        logging.error("Pre-run model check failed: %s", exc)
+        sys.exit(1)
+    else:
+        del _model, _vad
+        gc.collect()
+
     log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
-    run_log = open(log_dir / "subtitle_run.json", "a", encoding="utf-8")
-    failed_log = open("failed_subtitles.log", "a", encoding="utf-8")
     args_dict = vars(args)
-    try:
-        with concurrent.futures.ProcessPoolExecutor(
-            max_workers=args.workers,
-            initializer=_init_worker,
-            initargs=(args_dict, options),
-        ) as executor:
-            future_to_video = {
-                executor.submit(process_video, v): v for v in videos
-            }
+    with open(log_dir / "subtitle_run.json", "a", encoding="utf-8") as run_log, \
+        open("failed_subtitles.log", "a", encoding="utf-8") as failed_log:
+        try:
+            executor = concurrent.futures.ProcessPoolExecutor(
+                max_workers=args.workers,
+                initializer=_init_worker,
+                initargs=(args_dict, options),
+            )
+        except BrokenProcessPool as exc:  # pragma: no cover
+            logging.error(
+                "Worker initialization failed: %s", exc.__cause__ or exc
+            )
+            sys.exit(1)
+
+        with executor:
+            try:
+                future_to_video = {
+                    executor.submit(process_video, v): v for v in videos
+                }
+            except BrokenProcessPool as exc:  # pragma: no cover
+                logging.error(
+                    "Worker initialization failed: %s", exc.__cause__ or exc
+                )
+                sys.exit(1)
             for future in concurrent.futures.as_completed(future_to_video):
                 video = future_to_video[future]
                 try:
@@ -619,14 +654,6 @@ def main() -> None:
                     failed_log.write(
                         f"{result['video']}: {result['error']}\n"
                     )
-    except BrokenProcessPool as exc:  # pragma: no cover
-        logging.error(
-            "Worker initialization failed: %s", exc.__cause__ or exc
-        )
-        sys.exit(1)
-    finally:
-        failed_log.close()
-        run_log.close()
     # Cleaning up temp directory is intentionally left out to aid debugging.  In
     # production one could remove it or place it under ``TemporaryDirectory``.
 

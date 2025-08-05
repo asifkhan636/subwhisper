@@ -49,12 +49,14 @@ Sample command with explicit options:
 python generateSubtitles.py ./media \
     --model-size medium \
     --output-format vtt \
+    --output-dir ./subs \
     --extensions .mp4 .mkv \
     --language en
 ```
 
 Subtitle files (`.srt` or `.vtt`) will be written alongside the
-corresponding videos.
+corresponding videos by default.  Use `--output-dir` to place them under a
+separate directory while preserving the videos' relative paths.
 
 ## Logging
 
@@ -73,6 +75,8 @@ The CLI exposes a number of switches for customising behaviour:
 - `--vad-model`: VAD backend (`silero_vad` by default)
 - `--vad-threshold`: activation threshold for VAD (default: `0.35`)
 - `--output-format`: subtitle format (`srt` or `vtt`, default `srt`)
+- `--output-dir`: directory where subtitle files are written; relative paths
+  under the input directory are preserved
 - `--max-line-width`: maximum characters per subtitle line (default: `42`)
 - `--max-lines`: maximum lines per subtitle (default: `2`)
 - `--language`: override language detection with a code like `en` (default: auto)

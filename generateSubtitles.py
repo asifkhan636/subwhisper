@@ -21,10 +21,14 @@ import tempfile
 import textwrap
 import shutil
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Dict, Any
 
+
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
+# TODO: Remove once dependencies (e.g., ctranslate2) drop pkg_resources
 
 def _check_dependencies() -> None:
     """Ensure required third-party libraries and executables are available.

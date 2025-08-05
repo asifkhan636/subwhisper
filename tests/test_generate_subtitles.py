@@ -41,17 +41,33 @@ def gs(monkeypatch):
 
 def test_extract_audio(gs, tmp_path, monkeypatch):
     video = tmp_path / "clip.mp4"
-    called = {}
+    called = {"cmds": []}
 
-    def fake_run(cmd, check, stdout, stderr):
-        called["cmd"] = cmd
-        return types.SimpleNamespace(returncode=0)
+    def fake_run(cmd, check, stdout, stderr, text=False):
+        called["cmds"].append(cmd)
+        if cmd[0] == "ffprobe":
+            return types.SimpleNamespace(returncode=0, stdout='{"streams": [{"index": 0}]}')
+        return types.SimpleNamespace(returncode=0, stdout="")
 
     monkeypatch.setattr(gs.subprocess, "run", fake_run)
     result = gs.extract_audio(video, 0, tmp_path)
     assert result == tmp_path / "clip.wav"
-    assert called["cmd"][0] == "ffmpeg"
-    assert f"0:a:0" in called["cmd"]
+    ffmpeg_cmd = called["cmds"][-1]
+    assert ffmpeg_cmd[0] == "ffmpeg"
+    assert f"0:a:0" in ffmpeg_cmd
+
+
+def test_extract_audio_missing_track(gs, tmp_path, monkeypatch):
+    video = tmp_path / "clip.mp4"
+
+    def fake_run(cmd, check, stdout, stderr, text=False):
+        if cmd[0] == "ffprobe":
+            return types.SimpleNamespace(returncode=0, stdout='{"streams": []}')
+        raise AssertionError("ffmpeg should not be called")
+
+    monkeypatch.setattr(gs.subprocess, "run", fake_run)
+    with pytest.raises(ValueError):
+        gs.extract_audio(video, 0, tmp_path)
 
 
 def test_transcribe_file(gs, monkeypatch):

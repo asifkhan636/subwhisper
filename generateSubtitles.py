@@ -578,12 +578,17 @@ def main() -> None:
     if not videos:
         logging.warning("No videos found under %s", args.directory)
 
-    # Validate model name early to surface configuration issues before spinning up
-    # worker processes.
-    try:
-        whisperx.utils.verify_model_name(args.model_size)
-    except Exception as exc:  # pragma: no cover - validation failure path
-        parser.error(str(exc))
+    # Optionally verify that the requested model can be resolved by faster-whisper
+    # to surface configuration issues before spinning up worker processes.
+    try:  # pragma: no cover - optional runtime validation
+        from faster_whisper.utils import download_model
+
+        try:
+            download_model(args.model_size, output_dir=None)
+        except ValueError as exc:  # pragma: no cover - validation failure path
+            parser.error(str(exc))
+    except Exception:  # pragma: no cover - skip if faster-whisper unavailable
+        pass
 
     log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)

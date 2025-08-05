@@ -375,7 +375,6 @@ def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
     VAD_MODEL = load_vad_model(
         getattr(DEVICE, "type", DEVICE),
         ARGS["vad_model"],
-        vad_options={"onset": ARGS["vad_onset"], "offset": ARGS["vad_offset"]},
     )
     if ARGS.get("diarize"):
         from whisperx.diarize import load_diarize_model
@@ -604,7 +603,6 @@ def main() -> None:
         _vad = load_vad_model(
             device_str,
             args.vad_model,
-            vad_options={"onset": args.vad_onset, "offset": args.vad_offset},
         )
     except Exception as exc:  # pragma: no cover - best effort
         logging.error("Pre-run model check failed: %s", exc)

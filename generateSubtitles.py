@@ -173,8 +173,8 @@ def main() -> None:
     parser.add_argument(
         "--audio-track",
         type=int,
-        default=0,
-        help="Audio track index to extract (default: 0)",
+        default=1,
+        help="Audio track index to extract (default: 1; use 0 for first track)",
     )
     parser.add_argument("--model-size", default="medium", help="Whisper model size")
     parser.add_argument(

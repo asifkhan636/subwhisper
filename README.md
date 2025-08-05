@@ -60,7 +60,7 @@ corresponding videos.
 The CLI exposes a number of switches for customising behaviour:
 
 - `--extensions`: video file extensions to search for (default: `.mp4 .mkv .mov .avi`)
-- `--audio-track`: select which audio track to extract (default: `0`)
+- `--audio-track`: select which audio track to extract (default: `1`; use `0` for first track)
 - `--model-size`: Whisper model size to load
 - `--vad-model`: VAD backend (`silero_vad` by default)
 - `--vad-threshold`: activation threshold for VAD (default: `0.35`)

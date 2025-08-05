@@ -49,7 +49,8 @@ Sample command with explicit options:
 python generateSubtitles.py ./media \
     --model-size medium \
     --output-format vtt \
-    --extensions .mp4 .mkv
+    --extensions .mp4 .mkv \
+    --language en
 ```
 
 Subtitle files (`.srt` or `.vtt`) will be written alongside the
@@ -67,7 +68,7 @@ The CLI exposes a number of switches for customising behaviour:
 - `--output-format`: subtitle format (`srt` or `vtt`, default `srt`)
 - `--max-line-width`: maximum characters per subtitle line (default: `42`)
 - `--max-lines`: maximum lines per subtitle (default: `2`)
-- `--language`: override language detection with a code like `en`
+- `--language`: override language detection with a code like `en` (default: auto)
 
 ## Potential Enhancements
 

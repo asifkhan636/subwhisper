@@ -56,6 +56,13 @@ python generateSubtitles.py ./media \
 Subtitle files (`.srt` or `.vtt`) will be written alongside the
 corresponding videos.
 
+## Logging
+
+After each video is processed a summary entry is appended to
+`logs/subtitle_run.json`. The record includes start and end timestamps,
+whether the operation succeeded, and any associated error message. The
+`logs` directory is created automatically if it does not already exist.
+
 ## Configurable Options
 
 The CLI exposes a number of switches for customising behaviour:

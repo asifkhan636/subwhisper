@@ -121,3 +121,15 @@ The CLI exposes a number of switches for customising behaviour:
   activated before running the script.
 - Review `failed_subtitles.log` for videos that could not be processed.
 
+## Running Tests
+
+The project includes a small pytest suite with mocked dependencies. To run
+the tests, execute:
+
+```bash
+pytest
+```
+
+The tests use mock objects so they do not require heavy dependencies such as
+`ffmpeg` or `whisperx` to be installed.
+

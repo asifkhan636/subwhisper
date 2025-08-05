@@ -10,9 +10,11 @@ timestamps, parallelism, or explicit language overrides).
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import gc
 import logging
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 from typing import Iterable, List, Dict, Any
@@ -213,6 +215,68 @@ def discover_videos(directory: Path, extensions: List[str]) -> List[Path]:
     return files
 
 
+# Globals initialised in worker processes
+ARGS: Dict[str, Any] = {}
+DEVICE: torch.device | None = None
+MODEL: Any | None = None
+VAD_MODEL: Any | None = None
+DIARIZE_MODEL: Any | None = None
+OPTIONS: Dict[str, Any] = {}
+
+
+def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
+    """Initializer for worker processes to load heavy models once."""
+    global ARGS, DEVICE, MODEL, VAD_MODEL, DIARIZE_MODEL, OPTIONS
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+    ARGS = args
+    OPTIONS = options
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    compute_type = "float16" if DEVICE.type == "cuda" else "int8"
+    MODEL = whisperx.load_model(ARGS["model_size"], DEVICE, compute_type=compute_type)
+    VAD_MODEL = load_vad_model(
+        DEVICE,
+        ARGS["vad_model"],
+        vad_options={"onset": ARGS["vad_onset"], "offset": ARGS["vad_offset"]},
+    )
+    if ARGS.get("diarize"):
+        from whisperx.diarize import load_diarize_model
+
+        DIARIZE_MODEL = load_diarize_model(DEVICE)
+
+
+def process_video(video: Path) -> tuple[Path, str | None]:
+    """Process a single video file; return an optional error message."""
+    logging.info("Processing %s", video)
+    tmp_root = Path(".tmp_audio")
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory(dir=tmp_root) as tmp_dir:
+            audio_path = extract_audio(video, ARGS["audio_track"], Path(tmp_dir))
+            segments = transcribe_file(
+                audio_path,
+                MODEL,
+                VAD_MODEL,
+                DEVICE,
+                OPTIONS,
+                DIARIZE_MODEL,
+            )
+            write_subtitles(
+                segments,
+                video.with_suffix("." + ARGS["output_format"]),
+                fmt=ARGS["output_format"],
+                max_line_width=ARGS["max_line_width"],
+                max_lines=ARGS["max_lines"],
+            )
+        return video, None
+    except Exception as exc:  # pragma: no cover - pragmatic logging
+        logging.exception("Failed to generate subtitles for %s", video)
+        return video, str(exc)
+    finally:
+        gc.collect()
+        if DEVICE and DEVICE.type == "cuda":
+            torch.cuda.empty_cache()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate subtitles for videos")
     parser.add_argument("directory", help="Directory to recursively scan for videos")
@@ -276,27 +340,14 @@ def main() -> None:
         action="store_true",
         help="Enable speaker diarization",
     )
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-    failed_log = open("failed_subtitles.log", "a", encoding="utf-8")
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    compute_type = "float16" if device.type == "cuda" else "int8"
-    logging.info("Using device: %s", device)
-
-    model = whisperx.load_model(args.model_size, device, compute_type=compute_type)
-    # ``load_vad_model`` initializes the pyannote VAD pipeline with optional onset/offset parameters.
-    vad_model = load_vad_model(
-        device,
-        args.vad_model,
-        vad_options={"onset": args.vad_onset, "offset": args.vad_offset},
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of parallel worker processes",
     )
-    diarize_model = None
-    if args.diarize:
-        from whisperx.diarize import load_diarize_model
-
-        diarize_model = load_diarize_model(device)
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
     options: Dict[str, Any] = {}
     if args.language:
@@ -308,36 +359,18 @@ def main() -> None:
     if not videos:
         logging.warning("No videos found under %s", args.directory)
 
-    tmp_dir = Path(".tmp_audio")
-    for video in videos:
-        logging.info("Processing %s", video)
-        try:
-            audio_path = extract_audio(video, args.audio_track, tmp_dir)
-            segments = transcribe_file(
-                audio_path,
-                model,
-                vad_model,
-                device,
-                options,
-                diarize_model,
-            )
-            write_subtitles(
-                segments,
-                video.with_suffix("." + args.output_format),
-                fmt=args.output_format,
-                max_line_width=args.max_line_width,
-                max_lines=args.max_lines,
-            )
-        except Exception as exc:  # pragma: no cover - pragmatic logging
-            logging.exception("Failed to generate subtitles for %s", video)
-            failed_log.write(f"{video}: {exc}\n")
-        finally:
-            # Housekeeping: remove temp audio and free up GPU memory.
-            if 'audio_path' in locals() and audio_path.exists():
-                audio_path.unlink(missing_ok=True)
-            gc.collect()
-            if device.type == "cuda":
-                torch.cuda.empty_cache()
+    failed_log = open("failed_subtitles.log", "a", encoding="utf-8")
+    args_dict = vars(args)
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=args.workers,
+        initializer=_init_worker,
+        initargs=(args_dict, options),
+    ) as executor:
+        futures = [executor.submit(process_video, v) for v in videos]
+        for future in concurrent.futures.as_completed(futures):
+            video, error = future.result()
+            if error:
+                failed_log.write(f"{video}: {error}\n")
 
     failed_log.close()
     # Cleaning up temp directory is intentionally left out to aid debugging.  In

@@ -68,24 +68,32 @@ def transcribe_file(
 ) -> List[Dict[str, Any]]:
     """Transcribe *audio_path* with a preloaded WhisperX *model*.
 
-    ``load_vad_model`` from ``whisperx.vads.pyannote`` is leveraged to optionally
-    post-process the transcription with voice-activity-detection (VAD).
+    ``load_vad_model`` from ``whisperx.vads.pyannote`` can be used to detect
+    speech regions prior to transcription with voice-activity-detection (VAD).
     """
     options = options or {}
     logging.debug("Loading audio for transcription: %s", audio_path)
     audio = whisperx.load_audio(audio_path)
-    logging.info("Transcribing %s", audio_path)
-    result = model.transcribe(audio, **options)
-    segments = result.get("segments", [])
 
-    # ``whisperx`` provides a convenient wrapper around pyannote's VAD.  This
-    # allows trimming non-speech regions and can dramatically reduce runtime on
-    # long videos.  The current implementation simply applies VAD on the final
-    # segments, but more elaborate chunking strategies are possible.
+    speech_segments = None
     if vad_model is not None:
-        logging.debug("Applying VAD post-processing")
-        segments = whisperx.utils.vad_postprocess(segments, vad_model)
+        logging.debug("Running VAD to obtain speech segments")
+        try:
+            speech_segments = vad_model(audio)
+        except Exception as exc:  # pragma: no cover - best effort for varied APIs
+            logging.warning("VAD model failed, proceeding without VAD: %s", exc)
 
+    logging.info("Transcribing %s", audio_path)
+    if speech_segments is not None:
+        try:
+            result = model.transcribe(audio, segments=speech_segments, **options)
+        except TypeError:
+            # some versions of WhisperX expect ``speech_chunks`` instead
+            result = model.transcribe(audio, speech_chunks=speech_segments, **options)
+    else:
+        result = model.transcribe(audio, **options)
+
+    segments = result.get("segments", [])
     return segments
 
 

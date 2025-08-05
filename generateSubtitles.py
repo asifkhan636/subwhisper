@@ -19,7 +19,7 @@ from typing import Iterable, List, Dict, Any
 
 import torch
 import whisperx
-from whisperx.vad import load_vad_model
+from whisperx.vads.pyannote import load_vad_model
 
 
 def extract_audio(video_path: Path, audio_track: int, tmp_dir: Path) -> Path:
@@ -170,13 +170,21 @@ def main() -> None:
     )
     parser.add_argument("--model-size", default="medium", help="Whisper model size")
     parser.add_argument(
-        "--vad-model", default="silero_vad", help="Name of VAD model to use"
+        "--vad-model",
+        default="pyannote/segmentation",
+        help="Pyannote VAD model to use",
     )
     parser.add_argument(
-        "--vad-threshold",
+        "--vad-onset",
         type=float,
-        default=0.35,
-        help="VAD activation threshold",
+        default=0.5,
+        help="Onset probability threshold for VAD",
+    )
+    parser.add_argument(
+        "--vad-offset",
+        type=float,
+        default=0.363,
+        help="Offset probability threshold for VAD",
     )
     parser.add_argument(
         "--output-format",
@@ -208,8 +216,12 @@ def main() -> None:
     logging.info("Using device: %s", device)
 
     model = whisperx.load_model(args.model_size, device, compute_type=compute_type)
-    # ``load_vad_model`` provides a uniform API for different VAD backends.
-    vad_model = load_vad_model(args.vad_model, threshold=args.vad_threshold, device=device)
+    # ``load_vad_model`` initializes the pyannote VAD pipeline with optional thresholds.
+    vad_model = load_vad_model(
+        args.vad_model,
+        vad_options={"vad_onset": args.vad_onset, "vad_offset": args.vad_offset},
+        device=device,
+    )
 
     options: Dict[str, Any] = {}
     if args.language:

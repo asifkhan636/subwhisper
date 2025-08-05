@@ -43,6 +43,15 @@ sudo apt-get install ffmpeg            # on Debian/Ubuntu
 python generateSubtitles.py /path/to/videos
 ```
 
+To inspect the available audio tracks for a video before processing, use:
+
+```bash
+python generateSubtitles.py --list-audio-tracks myvideo.mkv
+```
+
+This prints track indices, language codes and descriptions so you can choose the
+appropriate `--audio-track` value.
+
 Sample command with explicit options:
 
 ```bash
@@ -70,7 +79,8 @@ whether the operation succeeded, and any associated error message. The
 The CLI exposes a number of switches for customising behaviour:
 
 - `--extensions`: video file extensions to search for (default: `.mp4 .mkv .mov .avi`)
-- `--audio-track`: select which audio track to extract (default: `1`; use `0` for first track)
+- `--audio-track`: select which audio track to extract (default: `1`; use `0` for first track). Run `--list-audio-tracks` to discover track indices
+- `--list-audio-tracks VIDEO`: list audio tracks for a single video and exit
 - `--model-size`: Whisper model size to load
 - `--vad-model`: VAD backend (`silero_vad` by default)
 - `--vad-threshold`: activation threshold for VAD (default: `0.35`)

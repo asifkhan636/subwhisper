@@ -18,9 +18,59 @@ import re
 import subprocess
 import tempfile
 import textwrap
+import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Dict, Any
+
+
+def _check_dependencies() -> None:
+    """Ensure required third-party libraries and executables are available.
+
+    The script relies on ``torch`` for tensor operations, ``whisperx`` for
+    transcription, ``pyannote.audio`` for VAD/diarization features, and the
+    ``ffmpeg`` executable for media manipulation.  If any are missing, provide
+    helpful installation instructions and exit gracefully.
+    """
+
+    missing: List[str] = []
+
+    try:  # PyTorch
+        import torch  # noqa: F401
+    except Exception:  # pragma: no cover - import failure path
+        missing.append(
+            "torch: install with `pip install torch` (see https://pytorch.org for "
+            "platform-specific instructions)"
+        )
+
+    try:  # WhisperX
+        import whisperx  # noqa: F401
+    except Exception:  # pragma: no cover - import failure path
+        missing.append(
+            "whisperx: install with `pip install git+https://github.com/m-bain/whisperX`"
+        )
+
+    try:  # pyannote.audio
+        import pyannote.audio  # noqa: F401
+    except Exception:  # pragma: no cover - import failure path
+        missing.append(
+            "pyannote.audio: install with `pip install pyannote.audio`"
+        )
+
+    if shutil.which("ffmpeg") is None:
+        missing.append(
+            "ffmpeg executable not found: install via package manager (e.g., "
+            "`sudo apt install ffmpeg` or `brew install ffmpeg`) and ensure it is "
+            "available on your PATH"
+        )
+
+    if missing:
+        print("Missing dependencies detected:\n- " + "\n- ".join(missing))
+        sys.exit(1)
+
+
+_check_dependencies()
 
 import torch
 import whisperx

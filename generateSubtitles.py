@@ -433,6 +433,7 @@ def main() -> None:
     parser.add_argument(
         "directory",
         nargs="?",
+        default="E:\Movies Series\One Pace - One Piece\[One Pace][101-105] Reverse Mountain [1080p]",
         help="Directory to recursively scan for videos",
     )
     parser.add_argument(
@@ -452,7 +453,7 @@ def main() -> None:
         default=1,
         help="Audio track index to extract (default: 1; use 0 for first track)",
     )
-    parser.add_argument("--model-size", default="medium", help="Whisper model size")
+    parser.add_argument("--model-size", default="large_v2", help="Whisper model size")
     parser.add_argument(
         "--vad-model",
         default="pyannote/segmentation",
@@ -503,7 +504,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--language",
-        default=None,
+        default='en',
         help="Language for transcription (e.g. 'en'); default: auto-detect",
     )
     parser.add_argument(

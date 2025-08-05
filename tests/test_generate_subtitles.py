@@ -66,16 +66,32 @@ def test_transcribe_file(gs, monkeypatch):
             self.last_segments = segments
             return {"segments": [{"start": 0.0, "end": 1.0, "text": "hi"}]}
 
-    def fake_vad(audio):
+    called = {}
+
+    def fake_vad(audio, onset=None, offset=None):
+        called["onset"] = onset
+        called["offset"] = offset
         return [{"start": 0.0, "end": 1.0}]
 
     def fake_diar(audio, segments):
         return [{"start": 0.0, "end": 1.0, "speaker": "S1"}]
 
+    gs.ARGS["vad_onset"] = 0.3
+    gs.ARGS["vad_offset"] = 0.5
+
     model = FakeModel()
-    segments = gs.transcribe_file(audio_path, model, fake_vad, gs.torch.device("cpu"), {}, fake_diar)
+    segments = gs.transcribe_file(
+        audio_path,
+        model,
+        fake_vad,
+        gs.torch.device("cpu"),
+        {},
+        fake_diar,
+    )
     assert model.last_segments == [{"start": 0.0, "end": 1.0}]
     assert segments[0]["speaker"] == "S1"
+    assert called["onset"] == 0.3
+    assert called["offset"] == 0.5
 
 
 def test_write_subtitles(gs, tmp_path):

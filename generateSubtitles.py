@@ -181,7 +181,11 @@ def transcribe_file(
     if vad_model is not None:
         logging.debug("Running VAD to obtain speech segments")
         try:
-            speech_segments = vad_model(audio)
+            speech_segments = vad_model(
+                audio,
+                onset=ARGS["vad_onset"],
+                offset=ARGS["vad_offset"],
+            )
             if not speech_segments:
                 logging.warning("VAD produced no segments; falling back to chunking")
                 speech_segments = None

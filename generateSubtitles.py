@@ -12,10 +12,12 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import gc
+import json
 import logging
 import subprocess
 import tempfile
 import textwrap
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Dict, Any
 
@@ -249,11 +251,13 @@ def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
         DIARIZE_MODEL = load_diarize_model(DEVICE)
 
 
-def process_video(video: Path) -> tuple[Path, str | None]:
-    """Process a single video file; return an optional error message."""
+def process_video(video: Path) -> Dict[str, Any]:
+    """Process a single video file and capture timing and error details."""
+    start_time = datetime.now().isoformat()
     logging.info("Processing %s", video)
     tmp_root = Path(".tmp_audio")
     tmp_root.mkdir(parents=True, exist_ok=True)
+    error: str | None = None
     try:
         with tempfile.TemporaryDirectory(dir=tmp_root) as tmp_dir:
             audio_path = extract_audio(video, ARGS["audio_track"], Path(tmp_dir))
@@ -272,14 +276,21 @@ def process_video(video: Path) -> tuple[Path, str | None]:
                 max_line_width=ARGS["max_line_width"],
                 max_lines=ARGS["max_lines"],
             )
-        return video, None
     except Exception as exc:  # pragma: no cover - pragmatic logging
         logging.exception("Failed to generate subtitles for %s", video)
-        return video, str(exc)
+        error = str(exc)
     finally:
         gc.collect()
         if DEVICE and DEVICE.type == "cuda":
             torch.cuda.empty_cache()
+    end_time = datetime.now().isoformat()
+    return {
+        "video": str(video),
+        "start": start_time,
+        "end": end_time,
+        "error": error,
+        "success": error is None,
+    }
 
 
 def main() -> None:
@@ -362,6 +373,9 @@ def main() -> None:
     if not videos:
         logging.warning("No videos found under %s", args.directory)
 
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    run_log = open(log_dir / "subtitle_run.json", "a", encoding="utf-8")
     failed_log = open("failed_subtitles.log", "a", encoding="utf-8")
     args_dict = vars(args)
     with concurrent.futures.ProcessPoolExecutor(
@@ -371,11 +385,14 @@ def main() -> None:
     ) as executor:
         futures = [executor.submit(process_video, v) for v in videos]
         for future in concurrent.futures.as_completed(futures):
-            video, error = future.result()
-            if error:
-                failed_log.write(f"{video}: {error}\n")
+            result = future.result()
+            json.dump(result, run_log)
+            run_log.write("\n")
+            if not result["success"]:
+                failed_log.write(f"{result['video']}: {result['error']}\n")
 
     failed_log.close()
+    run_log.close()
     # Cleaning up temp directory is intentionally left out to aid debugging.  In
     # production one could remove it or place it under ``TemporaryDirectory``.
 

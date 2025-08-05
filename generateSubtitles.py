@@ -65,6 +65,46 @@ def extract_audio(video_path: Path, audio_track: int, tmp_dir: Path) -> Path:
     return audio_path
 
 
+def list_audio_tracks(video_path: Path) -> None:
+    """Print available audio tracks for *video_path* using ``ffprobe``."""
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a",
+        "-show_entries",
+        (
+            "stream=index:stream_tags=language:stream_tags=title:"
+            "stream_tags=handler_name:stream_tags=description"
+        ),
+        "-of",
+        "json",
+        str(video_path),
+    ]
+    logging.debug("Running ffprobe: %s", " ".join(cmd))
+    result = subprocess.run(
+        cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    info = json.loads(result.stdout or "{}")
+    streams = info.get("streams", [])
+    if not streams:
+        print("No audio tracks found")
+        return
+    print("Index  Language  Description")
+    for stream in streams:
+        idx = stream.get("index", "?")
+        tags = stream.get("tags", {})
+        lang = tags.get("language", "und")
+        desc = (
+            tags.get("title")
+            or tags.get("handler_name")
+            or tags.get("description")
+            or ""
+        )
+        print(f"{idx:5}  {lang:8}  {desc}")
+
+
 def transcribe_file(
     audio_path: Path,
     model: Any,
@@ -340,7 +380,16 @@ def process_video(video: Path) -> Dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate subtitles for videos")
-    parser.add_argument("directory", help="Directory to recursively scan for videos")
+    parser.add_argument(
+        "directory",
+        nargs="?",
+        help="Directory to recursively scan for videos",
+    )
+    parser.add_argument(
+        "--list-audio-tracks",
+        metavar="VIDEO",
+        help="List audio tracks for VIDEO and exit",
+    )
     parser.add_argument(
         "--extensions",
         nargs="+",
@@ -425,6 +474,12 @@ def main() -> None:
     )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+
+    if args.list_audio_tracks:
+        list_audio_tracks(Path(args.list_audio_tracks))
+        return
+    if not args.directory:
+        parser.error("directory is required unless --list-audio-tracks is used")
 
     options: Dict[str, Any] = {"language": args.language}
     if args.word_timestamps:

@@ -65,6 +65,7 @@ def transcribe_file(
     vad_model: Any | None,
     device: torch.device,
     options: Dict[str, Any] | None = None,
+    diarize_model: Any | None = None,
 ) -> List[Dict[str, Any]]:
     """Transcribe *audio_path* with a preloaded WhisperX *model*.
 
@@ -94,6 +95,21 @@ def transcribe_file(
         result = model.transcribe(audio, **options)
 
     segments = result.get("segments", [])
+    if diarize_model is not None and speech_segments is not None:
+        logging.debug("Running diarization to assign speaker labels")
+        try:
+            diarize_segments = diarize_model(audio, speech_segments)
+        except Exception as exc:  # pragma: no cover - best effort for varied APIs
+            logging.warning("Diarization failed, proceeding without speaker labels: %s", exc)
+        else:
+            for seg in segments:
+                for dseg in diarize_segments:
+                    if dseg["start"] <= seg["start"] < dseg["end"]:
+                        speaker = dseg.get("speaker") or dseg.get("label")
+                        if speaker:
+                            seg["speaker"] = speaker
+                        break
+
     return segments
 
 
@@ -118,6 +134,7 @@ def write_subtitles(
     ----------
     segments:
         Iterable of dictionaries containing ``start``, ``end`` and ``text`` keys.
+        When present, a ``speaker`` field is prefixed to the subtitle text.
     output_path:
         Target path for the subtitle file.
     fmt:
@@ -136,7 +153,10 @@ def write_subtitles(
             for idx, seg in enumerate(segments, start=1):
                 start = _format_timestamp(seg["start"])
                 end = _format_timestamp(seg["end"])
-                text = textwrap.fill(seg["text"].strip(), width=max_line_width)
+                text = seg["text"].strip()
+                if "speaker" in seg:
+                    text = f"{seg['speaker']}: {text}"
+                text = textwrap.fill(text, width=max_line_width)
                 lines = text.splitlines()[:max_lines]
                 f.write(f"{idx}\n{start} --> {end}\n")
                 f.write("\n".join(lines) + "\n\n")
@@ -145,7 +165,10 @@ def write_subtitles(
             for seg in segments:
                 start = _format_timestamp(seg["start"]).replace(",", ".")
                 end = _format_timestamp(seg["end"]).replace(",", ".")
-                text = textwrap.fill(seg["text"].strip(), width=max_line_width)
+                text = seg["text"].strip()
+                if "speaker" in seg:
+                    text = f"{seg['speaker']}: {text}"
+                text = textwrap.fill(text, width=max_line_width)
                 lines = text.splitlines()[:max_lines]
                 f.write(f"{start} --> {end}\n")
                 f.write("\n".join(lines) + "\n\n")
@@ -214,6 +237,11 @@ def main() -> None:
         default=None,
         help="Override language detection (e.g. 'en')",
     )
+    parser.add_argument(
+        "--diarize",
+        action="store_true",
+        help="Enable speaker diarization",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
@@ -230,6 +258,11 @@ def main() -> None:
         args.vad_model,
         vad_options={"onset": args.vad_onset, "offset": args.vad_offset},
     )
+    diarize_model = None
+    if args.diarize:
+        from whisperx.diarize import load_diarize_model
+
+        diarize_model = load_diarize_model(device)
 
     options: Dict[str, Any] = {}
     if args.language:
@@ -244,7 +277,14 @@ def main() -> None:
         logging.info("Processing %s", video)
         try:
             audio_path = extract_audio(video, args.audio_track, tmp_dir)
-            segments = transcribe_file(audio_path, model, vad_model, device, options)
+            segments = transcribe_file(
+                audio_path,
+                model,
+                vad_model,
+                device,
+                options,
+                diarize_model,
+            )
             write_subtitles(
                 segments,
                 video.with_suffix("." + args.output_format),

@@ -181,8 +181,10 @@ def transcribe_file(
     if vad_model is not None:
         logging.debug("Running VAD to obtain speech segments")
         try:
+            import torch
+
             speech_segments = vad_model(
-                audio,
+                {"waveform": torch.tensor(audio), "sample_rate": SAMPLE_RATE},
                 onset=ARGS["vad_onset"],
                 offset=ARGS["vad_offset"],
             )

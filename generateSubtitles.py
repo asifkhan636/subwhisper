@@ -150,28 +150,57 @@ def write_subtitles(
 
     with output_path.open("w", encoding="utf-8") as f:
         if fmt == "srt":
-            for idx, seg in enumerate(segments, start=1):
-                start = _format_timestamp(seg["start"])
-                end = _format_timestamp(seg["end"])
-                text = seg["text"].strip()
-                if "speaker" in seg:
-                    text = f"{seg['speaker']}: {text}"
-                text = textwrap.fill(text, width=max_line_width)
-                lines = text.splitlines()[:max_lines]
-                f.write(f"{idx}\n{start} --> {end}\n")
-                f.write("\n".join(lines) + "\n\n")
+            idx = 1
+            for seg in segments:
+                words = seg.get("words")
+                if words:
+                    for w in words:
+                        start = _format_timestamp(w["start"])
+                        end = _format_timestamp(w.get("end", w["start"]))
+                        text = w.get("word", w.get("text", "")).strip()
+                        if "speaker" in seg:
+                            text = f"{seg['speaker']}: {text}"
+                        text = textwrap.fill(text, width=max_line_width)
+                        lines = text.splitlines()[:max_lines]
+                        f.write(f"{idx}\n{start} --> {end}\n")
+                        f.write("\n".join(lines) + "\n\n")
+                        idx += 1
+                else:
+                    start = _format_timestamp(seg["start"])
+                    end = _format_timestamp(seg["end"])
+                    text = seg["text"].strip()
+                    if "speaker" in seg:
+                        text = f"{seg['speaker']}: {text}"
+                    text = textwrap.fill(text, width=max_line_width)
+                    lines = text.splitlines()[:max_lines]
+                    f.write(f"{idx}\n{start} --> {end}\n")
+                    f.write("\n".join(lines) + "\n\n")
+                    idx += 1
         else:  # WEBVTT
             f.write("WEBVTT\n\n")
             for seg in segments:
-                start = _format_timestamp(seg["start"]).replace(",", ".")
-                end = _format_timestamp(seg["end"]).replace(",", ".")
-                text = seg["text"].strip()
-                if "speaker" in seg:
-                    text = f"{seg['speaker']}: {text}"
-                text = textwrap.fill(text, width=max_line_width)
-                lines = text.splitlines()[:max_lines]
-                f.write(f"{start} --> {end}\n")
-                f.write("\n".join(lines) + "\n\n")
+                words = seg.get("words")
+                if words:
+                    for w in words:
+                        start = _format_timestamp(w["start"]).replace(",", ".")
+                        end = _format_timestamp(w.get("end", w["start"])).replace(",", ".")
+                        text = w.get("word", w.get("text", "")).strip()
+                        if "speaker" in seg:
+                            text = f"{seg['speaker']}: {text}"
+                        text = textwrap.fill(text, width=max_line_width)
+                        lines = text.splitlines()[:max_lines]
+                        f.write(f"{start} --> {end}\n")
+                        f.write("\n".join(lines) + "\n\n")
+                else:
+                    start = _format_timestamp(seg["start"]).replace(",", ".")
+                    end = _format_timestamp(seg["end"]).replace(",", ".")
+                    text = seg["text"].strip()
+                    if "speaker" in seg:
+                        text = f"{seg['speaker']}: {text}"
+                    text = textwrap.fill(text, width=max_line_width)
+                    lines = text.splitlines()[:max_lines]
+                    f.write(f"{start} --> {end}\n")
+                    f.write("\n".join(lines) + "\n\n")
 
     return output_path
 
@@ -238,6 +267,11 @@ def main() -> None:
         help="Override language detection (e.g. 'en')",
     )
     parser.add_argument(
+        "--word-timestamps",
+        action="store_true",
+        help="Include word-level timestamps in output",
+    )
+    parser.add_argument(
         "--diarize",
         action="store_true",
         help="Enable speaker diarization",
@@ -267,6 +301,8 @@ def main() -> None:
     options: Dict[str, Any] = {}
     if args.language:
         options["language"] = args.language
+    if args.word_timestamps:
+        options["word_timestamps"] = True
 
     videos = discover_videos(Path(args.directory), args.extensions)
     if not videos:

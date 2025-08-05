@@ -102,6 +102,36 @@ def extract_audio(video_path: Path, audio_track: int, tmp_dir: Path) -> Path:
     """
     tmp_dir.mkdir(parents=True, exist_ok=True)
     audio_path = tmp_dir / (video_path.stem + ".wav")
+
+    # Verify that the requested audio track exists before invoking ffmpeg.
+    probe_cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a",
+        "-show_entries",
+        "stream=index",
+        "-of",
+        "json",
+        str(video_path),
+    ]
+    logging.debug("Running ffprobe: %s", " ".join(probe_cmd))
+    result = subprocess.run(
+        probe_cmd,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    info = json.loads(result.stdout or "{}")
+    streams = info.get("streams", [])
+    if audio_track < 0 or audio_track >= len(streams):
+        raise ValueError(
+            f"Audio track {audio_track} not found in {video_path}. "
+            "Use --list-audio-tracks to see available tracks."
+        )
+
     cmd = [
         "ffmpeg",
         "-i",
@@ -461,8 +491,8 @@ def main() -> None:
     parser.add_argument(
         "--audio-track",
         type=int,
-        default=1,
-        help="Audio track index to extract (default: 1; use 0 for first track)",
+        default=0,
+        help="Audio track index to extract (default: 0)",
     )
     parser.add_argument(
         "--model-size",

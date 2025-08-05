@@ -143,7 +143,7 @@ preserving each video's relative path.
 ### Tuning VAD thresholds and model size
 
 ```bash
-python generateSubtitles.py ./videos --vad-onset 0.6 --vad-offset 0.4 --model-size large
+python generateSubtitles.py ./videos --vad-onset 0.6 --vad-offset 0.4 --model-size large-v2
 ```
 
 Adjust the VAD sensitivity and use a larger Whisper model for potentially
@@ -163,7 +163,7 @@ The CLI exposes a number of switches for customising behaviour:
 - `--extensions`: video file extensions to search for (default: `.mp4 .mkv .mov .avi`)
 - `--audio-track`: select which audio track to extract (default: `1`; use `0` for first track). Run `--list-audio-tracks` to discover track indices
 - `--list-audio-tracks VIDEO`: list audio tracks for a single video and exit
-- `--model-size`: Whisper model size to load
+- `--model-size`: Whisper model size to load (e.g., `base`, `large-v2`; default: `large-v2`)
 - `--vad-model`: VAD backend (`pyannote/segmentation` by default)
 - `--vad-onset`: onset probability threshold for VAD (default: `0.5`)
 - `--vad-offset`: offset probability threshold for VAD (default: `0.363`)

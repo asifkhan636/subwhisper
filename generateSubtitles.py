@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+from concurrent.futures.process import BrokenProcessPool
 import gc
 import json
 import logging
@@ -573,26 +574,49 @@ def main() -> None:
     if not videos:
         logging.warning("No videos found under %s", args.directory)
 
+    # Validate model name early to surface configuration issues before spinning up
+    # worker processes.
+    try:
+        whisperx.utils.verify_model_name(args.model_size)
+    except Exception as exc:  # pragma: no cover - validation failure path
+        parser.error(str(exc))
+
     log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     run_log = open(log_dir / "subtitle_run.json", "a", encoding="utf-8")
     failed_log = open("failed_subtitles.log", "a", encoding="utf-8")
     args_dict = vars(args)
-    with concurrent.futures.ProcessPoolExecutor(
-        max_workers=args.workers,
-        initializer=_init_worker,
-        initargs=(args_dict, options),
-    ) as executor:
-        futures = [executor.submit(process_video, v) for v in videos]
-        for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            json.dump(result, run_log)
-            run_log.write("\n")
-            if not result["success"]:
-                failed_log.write(f"{result['video']}: {result['error']}\n")
-
-    failed_log.close()
-    run_log.close()
+    try:
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=args.workers,
+            initializer=_init_worker,
+            initargs=(args_dict, options),
+        ) as executor:
+            future_to_video = {
+                executor.submit(process_video, v): v for v in videos
+            }
+            for future in concurrent.futures.as_completed(future_to_video):
+                video = future_to_video[future]
+                try:
+                    result = future.result()
+                except Exception as exc:  # pragma: no cover - worker failure path
+                    logging.error("Processing %s failed: %s", video, exc)
+                    failed_log.write(f"{video}: {exc}\n")
+                    continue
+                json.dump(result, run_log)
+                run_log.write("\n")
+                if not result["success"]:
+                    failed_log.write(
+                        f"{result['video']}: {result['error']}\n"
+                    )
+    except BrokenProcessPool as exc:  # pragma: no cover
+        logging.error(
+            "Worker initialization failed: %s", exc.__cause__ or exc
+        )
+        sys.exit(1)
+    finally:
+        failed_log.close()
+        run_log.close()
     # Cleaning up temp directory is intentionally left out to aid debugging.  In
     # production one could remove it or place it under ``TemporaryDirectory``.
 

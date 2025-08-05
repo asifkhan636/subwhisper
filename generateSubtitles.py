@@ -442,7 +442,7 @@ def main() -> None:
     parser.add_argument(
         "directory",
         nargs="?",
-        default="E:\Movies Series\One Pace - One Piece\[One Pace][101-105] Reverse Mountain [1080p]",
+        default=".",
         help="Directory to recursively scan for videos",
     )
     parser.add_argument(

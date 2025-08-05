@@ -364,10 +364,11 @@ def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
     ARGS = args
     OPTIONS = options
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    compute_type = "float16" if DEVICE.type == "cuda" else "int8"
+    compute_type = "float16" if getattr(DEVICE, "type", DEVICE) == "cuda" else "int8"
+    device_str = DEVICE.type if hasattr(DEVICE, "type") else str(DEVICE)
     MODEL = whisperx.load_model(
         ARGS["model_size"],
-        DEVICE,
+        device_str,
         compute_type=compute_type,
         language=ARGS.get("language"),
     )

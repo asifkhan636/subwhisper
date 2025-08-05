@@ -18,7 +18,7 @@ The script relies on a few external tools and Python packages.
 - **Python**: 3.9 or newer
 - **Conda**: for managing the environment
 - **FFmpeg**: used for audio extraction
-- **Python packages**: `torch`, `pyannote.audio`, `whisperx`
+- **Python packages**: `torch==1.10.*`, `pyannote.audio==0.0.1`, `whisperx`
 
 ### Create a Conda Environment
 
@@ -30,8 +30,18 @@ conda activate subwhisper
 ```
 
 This installs Python, `torch`, `pyannote.audio`, `whisperx`, and other
-dependencies.  The `torch` entry is CPU‑only by default; edit
-`environment.yml` to choose a CUDA‑enabled build or add optional packages.
+dependencies.  Versions of `torch` and `pyannote.audio` are pinned to
+ensure compatibility with WhisperX's diarization models.  The `torch`
+entry is CPU‑only by default; edit `environment.yml` to choose a
+CUDA‑enabled build or add optional packages.
+
+#### Upgrading dependencies
+
+If you need newer features from `pyannote.audio` or `torch`, update the
+version pins in `environment.yml` (or run `pip install --upgrade torch
+pyannote.audio`) and ensure that you download models compatible with the
+new versions.  Refer to the respective project documentation for
+migration notes.
 
 If you prefer to configure things manually:
 
@@ -40,7 +50,7 @@ conda create -n subwhisper python=3.10
 conda activate subwhisper
 
 # Install dependencies
-pip install torch pyannote.audio whisperx
+pip install "torch==1.10.*" "pyannote.audio==0.0.1" whisperx
 # Install ffmpeg (choose one of the following)
 conda install -c conda-forge ffmpeg    # via conda
 # or

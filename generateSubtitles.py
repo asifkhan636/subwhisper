@@ -30,7 +30,7 @@ from packaging.version import parse as parse_version
 
 MIN_VERSIONS = {
     "torch": "2.5.0",
-    "whisperx": "3.4.2",
+    "whisperx": "3.4.2",  # API tested without vad_filter support
     "pyannote.audio": "3.3.0",
 }
 
@@ -504,18 +504,6 @@ def main() -> None:
         help="Whisper model size (e.g., 'base', 'large-v2')",
     )
     parser.add_argument(
-        "--vad-onset",
-        type=float,
-        default=0.5,
-        help="Onset probability threshold for VAD",
-    )
-    parser.add_argument(
-        "--vad-offset",
-        type=float,
-        default=0.363,
-        help="Offset probability threshold for VAD",
-    )
-    parser.add_argument(
         "--output-format",
         default="srt",
         choices=["srt", "vtt"],
@@ -597,8 +585,6 @@ def main() -> None:
 
     options: Dict[str, Any] = {
         "language": args.language,
-        "vad_filter": True,
-        "vad_parameters": {"onset": args.vad_onset, "offset": args.vad_offset},
     }
     if args.word_timestamps:
         options["word_timestamps"] = True

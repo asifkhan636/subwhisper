@@ -14,7 +14,7 @@ dependencies:
       - torch>=2.5
       - pyannote.audio>=3.3
       - speechbrain>=1.0
-      - whisperx>=3.4.2
+      - whisperx>=3.4.2,<4
       - packaging        # version parsing for dependency checks
       # Optional extras
       - rich             # pretty logging in the terminal

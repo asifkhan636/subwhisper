@@ -25,6 +25,8 @@ def gs(monkeypatch):
     dummy_whisperx = types.ModuleType("whisperx")
     dummy_whisperx.load_audio = lambda path: [0.0] * 16000
     dummy_whisperx.audio = types.SimpleNamespace(SAMPLE_RATE=16000)
+    dummy_whisperx.load_align_model = lambda language, device: (None, None)
+    dummy_whisperx.align = lambda segments, model, metadata, audio, device: {"segments": segments}
     sys.modules.setdefault("whisperx", dummy_whisperx)
     sys.modules.setdefault("whisperx.audio", dummy_whisperx.audio)
     dummy_vads_pyannote = types.ModuleType("whisperx.vads.pyannote")
@@ -84,11 +86,24 @@ def test_transcribe_file(gs, monkeypatch):
             self.last_kwargs = kwargs
             return {"segments": [{"start": 0.0, "end": 1.0, "text": "hi"}]}
 
+    calls = {}
+
+    def fake_load_align_model(language, device):
+        calls["load_align_model"] = (language, device)
+        return "am", "meta"
+
+    def fake_align(segs, align_model, metadata, audio, device):
+        calls["align"] = True
+        return {"segments": [{"start": 0.0, "end": 1.0, "text": "aligned"}]}
+
     def fake_diar(audio, segments):
         return [{"start": 0.0, "end": 1.0, "speaker": "S1"}]
 
     gs.ARGS["vad_onset"] = 0.3
     gs.ARGS["vad_offset"] = 0.5
+
+    monkeypatch.setattr(gs.whisperx, "load_align_model", fake_load_align_model)
+    monkeypatch.setattr(gs.whisperx, "align", fake_align)
 
     model = FakeModel()
     segments = gs.transcribe_file(
@@ -101,7 +116,10 @@ def test_transcribe_file(gs, monkeypatch):
     )
     assert model.last_kwargs["vad_filter"] is True
     assert model.last_kwargs["vad_parameters"] == {"onset": 0.3, "offset": 0.5}
+    assert segments[0]["text"] == "aligned"
     assert segments[0]["speaker"] == "S1"
+    assert calls["load_align_model"][1] == gs.torch.device("cpu")
+    assert calls["align"] is True
 
 
 def test_write_subtitles(gs, tmp_path):

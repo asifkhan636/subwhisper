@@ -86,8 +86,6 @@ _check_dependencies()
 import torch
 import numpy as np
 import whisperx
-from whisperx.vads.pyannote import load_vad_model
-from whisperx.audio import SAMPLE_RATE
 from whisperx import diarize
 
 
@@ -201,7 +199,6 @@ def list_audio_tracks(video_path: Path) -> None:
 def transcribe_file(
     audio_path: Path,
     model: Any,
-    vad_model: Any | None,
     device: torch.device,
     args: Dict[str, Any],
     options: Dict[str, Any] | None = None,
@@ -394,7 +391,6 @@ def worker_factory(args: Dict[str, Any], options: Dict[str, Any]):
         compute_type=compute_type,
         language=args.get("language"),
     )
-    vad_model = load_vad_model(getattr(device, "type", device), args["vad_model"])
     diarize_model: Any | None = None
 
     def worker(video: Path) -> Dict[str, Any]:
@@ -404,7 +400,6 @@ def worker_factory(args: Dict[str, Any], options: Dict[str, Any]):
             args,
             options,
             model,
-            vad_model,
             device,
             diarize_model,
         )
@@ -417,7 +412,6 @@ def process_video(
     args: Dict[str, Any],
     options: Dict[str, Any],
     model: Any,
-    vad_model: Any | None,
     device: torch.device,
     diarize_model: Any | None,
 ) -> tuple[Dict[str, Any], Any | None]:
@@ -433,7 +427,6 @@ def process_video(
             segments, diarize_model = transcribe_file(
                 audio_path,
                 model,
-                vad_model,
                 device,
                 args,
                 options,
@@ -509,11 +502,6 @@ def main() -> None:
         "--model-size",
         default="large-v2",
         help="Whisper model size (e.g., 'base', 'large-v2')",
-    )
-    parser.add_argument(
-        "--vad-model",
-        default="pyannote/segmentation",
-        help="Pyannote VAD model to use",
     )
     parser.add_argument(
         "--vad-onset",
@@ -645,15 +633,11 @@ def main() -> None:
             compute_type=compute_type,
             language=args.language,
         )
-        _vad = load_vad_model(
-            device_str,
-            args.vad_model,
-        )
     except Exception as exc:  # pragma: no cover - best effort
         logging.error("Pre-run model check failed: %s", exc)
         sys.exit(1)
     else:
-        del _model, _vad
+        del _model
         gc.collect()
 
     log_dir = Path("logs")

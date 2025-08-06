@@ -131,7 +131,7 @@ Processes every supported video in `./videos` with default settings.
 ### Selecting a specific audio track
 
 ```bash
-python generateSubtitles.py ./videos --audio-track 0
+python generateSubtitles.py ./videos --audio-track 1
 ```
 
 Choose a different audio track when a file contains multiple tracks.
@@ -191,7 +191,9 @@ whether the operation succeeded, and any associated error message. The
 The CLI exposes a number of switches for customising behaviour:
 
 - `--extensions`: video file extensions to search for (default: `.mp4 .mkv .mov .avi`)
-- `--audio-track`: select which audio track to extract (default: `1`; use `0` for first track). Run `--list-audio-tracks` to discover track indices
+- `--audio-track`: audio track index to extract. By default the script attempts to
+  auto-detect the spoken-language track; run `--list-audio-tracks` to discover
+  indices or pass an explicit value
 - `--list-audio-tracks VIDEO`: list audio tracks for a single video and exit
 - `--model-size`: Whisper model size to load (e.g., `base`, `large-v2`; default: `large-v2`)
 - `--output-format`: subtitle format (`srt` or `vtt`, default `srt`)

@@ -199,61 +199,24 @@ def transcribe_file(
     options: Dict[str, Any] | None = None,
     diarize_model: Any | None = None,
 ) -> List[Dict[str, Any]]:
-    """Transcribe *audio_path* with a preloaded WhisperX *model*.
-
-    ``load_vad_model`` from ``whisperx.vads.pyannote`` can be used to detect
-    speech regions prior to transcription with voice-activity-detection (VAD).
-    """
+    """Transcribe *audio_path* with a preloaded WhisperX *model*."""
     options = options or {}
     logging.debug("Loading audio for transcription: %s", audio_path)
     audio = np.asarray(whisperx.load_audio(audio_path))
 
-    speech_segments = None
-    if vad_model is not None:
-        logging.debug("Running VAD to obtain speech segments")
-        try:
-            import torch
-
-            speech_segments = vad_model(
-                {
-                    "waveform": torch.from_numpy(audio).unsqueeze(0),
-                    "sample_rate": SAMPLE_RATE,
-                },
-                onset=ARGS["vad_onset"],
-                offset=ARGS["vad_offset"],
-            )
-            if not speech_segments:
-                logging.warning("VAD produced no segments; falling back to chunking")
-                speech_segments = None
-        except Exception as exc:  # pragma: no cover - best effort for varied APIs
-            logging.warning("VAD model failed, proceeding without VAD: %s", exc)
-
     logging.info("Transcribing %s", audio_path)
-    segments: List[Dict[str, Any]] = []
-    if speech_segments is not None:
-        try:
-            result = model.transcribe(audio, segments=speech_segments, **options)
-        except TypeError:
-            # some versions of WhisperX expect ``speech_chunks`` instead
-            result = model.transcribe(audio, speech_chunks=speech_segments, **options)
-        segments = result.get("segments", [])
-    else:
-        chunk_dur = float(options.get("chunk_duration", 30.0))
-        sr = int(options.get("sample_rate", SAMPLE_RATE))
-        chunk_size = int(chunk_dur * sr)
-        for start in range(0, len(audio), chunk_size):
-            chunk_audio = audio[start:start + chunk_size]
-            result = model.transcribe(chunk_audio, **options)
-            chunk_segments = result.get("segments", [])
-            offset = start / sr
-            for seg in chunk_segments:
-                seg["start"] += offset
-                seg["end"] += offset
-            segments.extend(chunk_segments)
-    if diarize_model is not None and speech_segments is not None:
+    result = model.transcribe(
+        audio,
+        vad_filter=True,
+        vad_parameters={"onset": ARGS["vad_onset"], "offset": ARGS["vad_offset"]},
+        **options,
+    )
+    segments: List[Dict[str, Any]] = result.get("segments", [])
+
+    if diarize_model is not None:
         logging.debug("Running diarization to assign speaker labels")
         try:
-            diarize_segments = diarize_model(audio, speech_segments)
+            diarize_segments = diarize_model(audio, segments)
         except Exception as exc:  # pragma: no cover - best effort for varied APIs
             logging.warning("Diarization failed, proceeding without speaker labels: %s", exc)
         else:
@@ -611,7 +574,11 @@ def main() -> None:
     if not args.directory:
         parser.error("directory is required unless --list-audio-tracks is used")
 
-    options: Dict[str, Any] = {"language": args.language}
+    options: Dict[str, Any] = {
+        "language": args.language,
+        "vad_filter": True,
+        "vad_parameters": {"onset": args.vad_onset, "offset": args.vad_offset},
+    }
     if args.word_timestamps:
         options["word_timestamps"] = True
 

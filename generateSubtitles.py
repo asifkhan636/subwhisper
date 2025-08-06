@@ -78,6 +78,7 @@ def _check_dependencies() -> None:
 _check_dependencies()
 
 import torch
+import numpy as np
 import whisperx
 from whisperx.vads.pyannote import load_vad_model
 from whisperx.audio import SAMPLE_RATE
@@ -205,7 +206,7 @@ def transcribe_file(
     """
     options = options or {}
     logging.debug("Loading audio for transcription: %s", audio_path)
-    audio = whisperx.load_audio(audio_path)
+    audio = np.asarray(whisperx.load_audio(audio_path))
 
     speech_segments = None
     if vad_model is not None:
@@ -214,7 +215,10 @@ def transcribe_file(
             import torch
 
             speech_segments = vad_model(
-                {"waveform": torch.tensor(audio), "sample_rate": SAMPLE_RATE},
+                {
+                    "waveform": torch.from_numpy(audio).unsqueeze(0),
+                    "sample_rate": SAMPLE_RATE,
+                },
                 onset=ARGS["vad_onset"],
                 offset=ARGS["vad_offset"],
             )

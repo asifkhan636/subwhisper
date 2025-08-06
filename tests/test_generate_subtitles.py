@@ -19,6 +19,7 @@ def gs(monkeypatch):
     dummy_torch.device = lambda *a, **k: "cpu"
     dummy_torch.cuda = types.SimpleNamespace(is_available=lambda: False, empty_cache=lambda: None)
     dummy_torch.tensor = lambda x: x
+    dummy_torch.from_numpy = lambda arr: types.SimpleNamespace(unsqueeze=lambda dim: arr)
     sys.modules.setdefault("torch", dummy_torch)
 
     dummy_whisperx = types.ModuleType("whisperx")

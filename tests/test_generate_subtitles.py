@@ -129,3 +129,50 @@ def test_write_subtitles(gs, tmp_path):
     text = result.read_text(encoding="utf-8")
     assert "00:00:00,000 --> 00:00:01,000" in text
     assert "hello world" in text
+
+
+def test_write_subtitles_word_grouping(gs, tmp_path):
+    segments = [
+        {
+            "speaker": "S1",
+            "words": [
+                {"start": 0.0, "end": 0.4, "word": "Hello"},
+                {"start": 0.5, "end": 0.8, "word": "WORLD"},
+                {"start": 2.0, "end": 2.3, "word": "Again"},
+            ],
+        }
+    ]
+    out = tmp_path / "out"
+    result = gs.write_subtitles(segments, out, fmt="srt", case="lower", pause_threshold=1.0)
+    text = result.read_text(encoding="utf-8")
+    assert text.count("-->") == 2
+    assert "s1: hello world" in text
+    assert "s1: again" in text
+
+
+def test_write_subtitles_width_limit(gs, tmp_path):
+    segments = [
+        {
+            "speaker": "S1",
+            "words": [
+                {"start": 0.0, "end": 0.3, "word": "hello"},
+                {"start": 0.31, "end": 0.6, "word": "world"},
+                {"start": 0.61, "end": 0.9, "word": "again"},
+            ],
+        }
+    ]
+    out = tmp_path / "out"
+    result = gs.write_subtitles(
+        segments,
+        out,
+        fmt="srt",
+        case="lower",
+        max_line_width=10,
+        max_lines=1,
+        pause_threshold=10.0,
+    )
+    text = result.read_text(encoding="utf-8")
+    assert text.count("-->") == 3
+    assert "s1: hello" in text
+    assert "s1: world" in text
+    assert "s1: again" in text

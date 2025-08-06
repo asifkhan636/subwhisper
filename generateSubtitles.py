@@ -251,7 +251,18 @@ def transcribe_file(
     audio = np.asarray(whisperx.load_audio(audio_path))
 
     logging.info("Transcribing %s", audio_path)
-    result = model.transcribe(audio, **options)
+    # remove VAD keys from options to avoid passing duplicates
+    local_opts = options.copy()
+    local_opts.pop("vad_filter", None)
+    local_opts.pop("vad_onset", None)
+    local_opts.pop("vad_offset", None)
+    result = model.transcribe(
+        audio,
+        vad_filter=args.get("vad_filter"),
+        vad_onset=args.get("vad_onset"),
+        vad_offset=args.get("vad_offset"),
+        **local_opts,
+    )
     segments: List[Dict[str, Any]] = result.get("segments", [])
 
     # Align segments to the audio for more accurate timestamps
@@ -589,6 +600,23 @@ def main() -> None:
         help="Include word-level timestamps in output",
     )
     parser.add_argument(
+        "--vad-filter",
+        action="store_true",
+        help="Apply voice activity detection during transcription",
+    )
+    parser.add_argument(
+        "--vad-onset",
+        type=float,
+        default=0.5,
+        help="VAD onset probability threshold",
+    )
+    parser.add_argument(
+        "--vad-offset",
+        type=float,
+        default=0.5,
+        help="VAD offset probability threshold",
+    )
+    parser.add_argument(
         "--diarize",
         action="store_true",
         help="Enable speaker diarization",
@@ -632,6 +660,10 @@ def main() -> None:
         options["language"] = args.language
     if args.word_timestamps:
         options["word_timestamps"] = True
+    # propagate VAD settings regardless of whether they are defaults
+    options["vad_filter"] = args.vad_filter
+    options["vad_onset"] = args.vad_onset
+    options["vad_offset"] = args.vad_offset
 
     if args.output_dir:
         args.output_dir = str(Path(args.output_dir))

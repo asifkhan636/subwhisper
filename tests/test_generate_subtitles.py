@@ -147,8 +147,18 @@ def test_transcribe_file(gs, monkeypatch):
     monkeypatch.setattr(gs.whisperx.diarize, "load_diarize_model", fake_load_diarize_model)
 
     model = FakeModel()
-    args = {"diarize": True}
-    options = {"language": "en"}
+    args = {
+        "diarize": True,
+        "vad_filter": False,
+        "vad_onset": 0.5,
+        "vad_offset": 0.5,
+    }
+    options = {
+        "language": "en",
+        "vad_filter": False,
+        "vad_onset": 0.5,
+        "vad_offset": 0.5,
+    }
     segments, _ = gs.transcribe_file(
         audio_path,
         model,
@@ -156,7 +166,12 @@ def test_transcribe_file(gs, monkeypatch):
         args,
         options,
     )
-    assert model.last_kwargs == {"language": "en"}
+    assert model.last_kwargs == {
+        "language": "en",
+        "vad_filter": False,
+        "vad_onset": 0.5,
+        "vad_offset": 0.5,
+    }
     assert segments[0]["text"] == "aligned"
     assert segments[0]["speaker"] == "S1"
     assert calls["load_align_model"][1] == gs.torch.device("cpu")

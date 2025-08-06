@@ -253,6 +253,7 @@ def write_subtitles(
     max_lines: int = 2,
     case: str | None = None,
     strip_punctuation: bool = False,
+    pause_threshold: float = 1.0,
 ) -> Path:
     """Write *segments* to *output_path* using the requested subtitle *fmt*.
 
@@ -288,63 +289,67 @@ def write_subtitles(
             text = text.upper()
         return text
 
+    cues: List[tuple[float, float, str]] = []
+    for seg in segments:
+        speaker = seg.get("speaker")
+        words = seg.get("words")
+        if words:
+            phrase_words: List[str] = []
+            phrase_start = 0.0
+            last_end = 0.0
+            for w in words:
+                w_start = w["start"]
+                w_end = w.get("end", w_start)
+                w_text = _normalize(w.get("word", w.get("text", "")).strip())
+                if not phrase_words:
+                    phrase_start = w_start
+                    phrase_words.append(w_text)
+                else:
+                    gap = w_start - last_end
+                    candidate = phrase_words + [w_text]
+                    wrapped = textwrap.wrap(" ".join(candidate), width=max_line_width)
+                    if gap > pause_threshold or len(wrapped) > max_lines:
+                        text = " ".join(phrase_words)
+                        if speaker:
+                            text = f"{speaker}: {text}"
+                        cues.append((phrase_start, last_end, text))
+                        phrase_start = w_start
+                        phrase_words = [w_text]
+                    else:
+                        phrase_words.append(w_text)
+                last_end = w_end
+            if phrase_words:
+                text = " ".join(phrase_words)
+                if speaker:
+                    text = f"{speaker}: {text}"
+                cues.append((phrase_start, last_end, text))
+        else:
+            text = seg["text"].strip()
+            if speaker:
+                text = f"{speaker}: {text}"
+            text = _normalize(text)
+            cues.append((seg["start"], seg["end"], text))
+
     with output_path.open("w", encoding="utf-8") as f:
         if fmt == "srt":
             idx = 1
-            for seg in segments:
-                words = seg.get("words")
-                if words:
-                    for w in words:
-                        start = _format_timestamp(w["start"])
-                        end = _format_timestamp(w.get("end", w["start"]))
-                        text = w.get("word", w.get("text", "")).strip()
-                        if "speaker" in seg:
-                            text = f"{seg['speaker']}: {text}"
-                        text = _normalize(text)
-                        text = textwrap.fill(text, width=max_line_width)
-                        lines = text.splitlines()[:max_lines]
-                        f.write(f"{idx}\n{start} --> {end}\n")
-                        f.write("\n".join(lines) + "\n\n")
-                        idx += 1
-                else:
-                    start = _format_timestamp(seg["start"])
-                    end = _format_timestamp(seg["end"])
-                    text = seg["text"].strip()
-                    if "speaker" in seg:
-                        text = f"{seg['speaker']}: {text}"
-                    text = _normalize(text)
-                    text = textwrap.fill(text, width=max_line_width)
-                    lines = text.splitlines()[:max_lines]
-                    f.write(f"{idx}\n{start} --> {end}\n")
-                    f.write("\n".join(lines) + "\n\n")
-                    idx += 1
+            for start, end, text in cues:
+                text = _normalize(text)
+                text = textwrap.fill(text, width=max_line_width)
+                lines = text.splitlines()[:max_lines]
+                f.write(f"{idx}\n{_format_timestamp(start)} --> {_format_timestamp(end)}\n")
+                f.write("\n".join(lines) + "\n\n")
+                idx += 1
         else:  # WEBVTT
             f.write("WEBVTT\n\n")
-            for seg in segments:
-                words = seg.get("words")
-                if words:
-                    for w in words:
-                        start = _format_timestamp(w["start"]).replace(",", ".")
-                        end = _format_timestamp(w.get("end", w["start"])).replace(",", ".")
-                        text = w.get("word", w.get("text", "")).strip()
-                        if "speaker" in seg:
-                            text = f"{seg['speaker']}: {text}"
-                        text = _normalize(text)
-                        text = textwrap.fill(text, width=max_line_width)
-                        lines = text.splitlines()[:max_lines]
-                        f.write(f"{start} --> {end}\n")
-                        f.write("\n".join(lines) + "\n\n")
-                else:
-                    start = _format_timestamp(seg["start"]).replace(",", ".")
-                    end = _format_timestamp(seg["end"]).replace(",", ".")
-                    text = seg["text"].strip()
-                    if "speaker" in seg:
-                        text = f"{seg['speaker']}: {text}"
-                    text = _normalize(text)
-                    text = textwrap.fill(text, width=max_line_width)
-                    lines = text.splitlines()[:max_lines]
-                    f.write(f"{start} --> {end}\n")
-                    f.write("\n".join(lines) + "\n\n")
+            for start, end, text in cues:
+                text = _normalize(text)
+                text = textwrap.fill(text, width=max_line_width)
+                lines = text.splitlines()[:max_lines]
+                f.write(
+                    f"{_format_timestamp(start).replace(',', '.')} --> {_format_timestamp(end).replace(',', '.')}\n"
+                )
+                f.write("\n".join(lines) + "\n\n")
 
     return output_path
 

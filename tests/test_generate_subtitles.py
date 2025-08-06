@@ -129,14 +129,15 @@ def test_transcribe_file(gs, monkeypatch):
     monkeypatch.setattr(gs.whisperx.diarize, "load_diarize_model", fake_load_diarize_model)
 
     model = FakeModel()
-    args = {"vad_onset": 0.3, "vad_offset": 0.5, "diarize": True}
+    args = {"diarize": True}
+    options = {"vad_filter": True, "vad_parameters": {"onset": 0.3, "offset": 0.5}}
     segments, _ = gs.transcribe_file(
         audio_path,
         model,
         None,
         gs.torch.device("cpu"),
         args,
-        {},
+        options,
     )
     assert model.last_kwargs["vad_filter"] is True
     assert model.last_kwargs["vad_parameters"] == {"onset": 0.3, "offset": 0.5}

@@ -213,12 +213,7 @@ def transcribe_file(
     audio = np.asarray(whisperx.load_audio(audio_path))
 
     logging.info("Transcribing %s", audio_path)
-    result = model.transcribe(
-        audio,
-        vad_filter=True,
-        vad_parameters={"onset": args["vad_onset"], "offset": args["vad_offset"]},
-        **options,
-    )
+    result = model.transcribe(audio, **options)
     segments: List[Dict[str, Any]] = result.get("segments", [])
 
     # Align segments to the audio for more accurate timestamps

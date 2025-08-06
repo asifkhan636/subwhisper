@@ -12,16 +12,16 @@ automated subtitle workflows.
 ## Installation Prerequisites
 
 The script relies on a few external tools and Python packages. It has been
-tested with `whisperx==3.4.2`, `torch==1.10.2`, and `pyannote.audio==0.0.1`.
-On startup, `generateSubtitles.py` checks that these versions are installed and
-provides guidance if mismatches are detected.
+tested with `whisperx>=3.4.2`, `torch>=2.5`, and `pyannote.audio>=3.3`.
+On startup, `generateSubtitles.py` checks that these minimum versions are
+installed and provides guidance if outdated releases are detected.
 
 ### Required Software
 
 - **Python**: 3.9 or newer
 - **Conda**: for managing the environment
 - **FFmpeg**: used for audio extraction
-- **Python packages**: `torch==1.10.2`, `pyannote.audio==0.0.1`, `speechbrain==0.5.16`, `whisperx==3.4.2`
+- **Python packages**: `torch>=2.5`, `pyannote.audio>=3.3`, `speechbrain>=1.0`, `whisperx>=3.4.2`
 
 ### Create a Conda Environment
 
@@ -32,21 +32,17 @@ conda env create -f environment.yml
 conda activate subwhisper
 ```
 
-This installs Python, `torch==1.10.2`, `pyannote.audio==0.0.1`,
-`speechbrain==0.5.16`, `whisperx==3.4.2`, and other dependencies. Versions
-of `torch`, `pyannote.audio`, and `speechbrain` are pinned to ensure
-compatibility with WhisperX's
-diarization models.  The `torch` entry is CPU‑only by default; edit
-`environment.yml` to choose a
-CUDA‑enabled build or add optional packages.
+This installs Python, `torch>=2.5`, `pyannote.audio>=3.3`,
+`speechbrain>=1.0`, `whisperx>=3.4.2`, and other dependencies. The `torch`
+entry is CPU‑only by default; edit `environment.yml` to choose a CUDA‑enabled
+build or add optional packages.
 
 #### Upgrading dependencies
 
-If you need newer features from `pyannote.audio`, `torch`, or `speechbrain`, update the
-version pins in `environment.yml` (or run `pip install --upgrade torch
-pyannote.audio speechbrain`) and ensure that you download models compatible with the
-new versions.  Refer to the respective project documentation for
-migration notes.
+If you need newer features from `pyannote.audio`, `torch`, or `speechbrain`,
+run `pip install --upgrade torch pyannote.audio speechbrain` and ensure that
+you download models compatible with the new versions. Refer to the respective
+project documentation for migration notes.
 
 If you prefer to configure things manually:
 
@@ -55,7 +51,7 @@ conda create -n subwhisper python=3.10
 conda activate subwhisper
 
 # Install dependencies
-pip install "torch==1.10.2" "pyannote.audio==0.0.1" "speechbrain==0.5.16" "whisperx==3.4.2"
+pip install "torch>=2.5" "pyannote.audio>=3.3" "speechbrain>=1.0" "whisperx>=3.4.2"
 # Install ffmpeg (choose one of the following)
 conda install -c conda-forge ffmpeg    # via conda
 # or

@@ -22,7 +22,7 @@ def gs(monkeypatch):
     dummy_torch.cuda = types.SimpleNamespace(is_available=lambda: False, empty_cache=lambda: None)
     dummy_torch.tensor = lambda x: x
     dummy_torch.from_numpy = lambda arr: types.SimpleNamespace(unsqueeze=lambda dim: arr)
-    dummy_torch.__version__ = "1.10.2"
+    dummy_torch.__version__ = "2.5.0"
     sys.modules["torch"] = dummy_torch
 
     dummy_whisperx = types.ModuleType("whisperx")
@@ -50,7 +50,7 @@ def gs(monkeypatch):
     dummy_pyannote = types.ModuleType("pyannote")
     dummy_pyannote.__path__ = []
     dummy_pyannote_audio = types.ModuleType("pyannote.audio")
-    dummy_pyannote_audio.__version__ = "0.0.1"
+    dummy_pyannote_audio.__version__ = "3.3.0"
     sys.modules["pyannote"] = dummy_pyannote
     sys.modules["pyannote.audio"] = dummy_pyannote_audio
 

@@ -1,5 +1,6 @@
 import importlib
 import importlib
+import json
 import types
 import sys
 from pathlib import Path
@@ -84,6 +85,28 @@ def test_extract_audio_missing_track(gs, tmp_path, monkeypatch):
     monkeypatch.setattr(gs.subprocess, "run", fake_run)
     with pytest.raises(ValueError):
         gs.extract_audio(video, 0, tmp_path)
+
+
+def test_detect_audio_track_pref_language(gs, tmp_path, monkeypatch):
+    video = tmp_path / "clip.mkv"
+
+    def fake_run(cmd, check, stdout, stderr, text=False):
+        data = {"streams": [{"index": 0, "tags": {"language": "jpn"}}, {"index": 1, "tags": {"language": "eng"}}]}
+        return types.SimpleNamespace(returncode=0, stdout=json.dumps(data))
+
+    monkeypatch.setattr(gs.subprocess, "run", fake_run)
+    assert gs.detect_audio_track(video, "eng") == 1
+
+
+def test_detect_audio_track_fallback(gs, tmp_path, monkeypatch):
+    video = tmp_path / "clip.mkv"
+
+    def fake_run(cmd, check, stdout, stderr, text=False):
+        data = {"streams": [{"index": 2}, {"index": 4}]}
+        return types.SimpleNamespace(returncode=0, stdout=json.dumps(data))
+
+    monkeypatch.setattr(gs.subprocess, "run", fake_run)
+    assert gs.detect_audio_track(video, None) == 2
 
 
 def test_transcribe_file(gs, monkeypatch):

@@ -196,6 +196,47 @@ def list_audio_tracks(video_path: Path) -> None:
         print(f"{idx:5}  {lang:8}  {desc}")
 
 
+def detect_audio_track(video_path: Path, language: str | None = None) -> int:
+    """Return the index of the audio track matching *language*.
+
+    If *language* is provided, ``ffprobe`` metadata is inspected for a stream
+    whose ``language`` tag matches.  When no match is found or *language* is
+    ``None``, the first audio track is returned.  A ``ValueError`` is raised if
+    no audio streams are present in *video_path*.
+    """
+
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a",
+        "-show_entries",
+        "stream=index:stream_tags=language",
+        "-of",
+        "json",
+        str(video_path),
+    ]
+    logging.debug("Running ffprobe: %s", " ".join(cmd))
+    result = subprocess.run(
+        cmd,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    info = json.loads(result.stdout or "{}")
+    streams = info.get("streams", [])
+    if not streams:
+        raise ValueError(f"No audio tracks found in {video_path}")
+    if language:
+        for stream in streams:
+            tags = stream.get("tags", {})
+            if tags.get("language") == language:
+                return int(stream.get("index", 0))
+    return int(streams[0].get("index", 0))
+
+
 def transcribe_file(
     audio_path: Path,
     model: Any,
@@ -423,7 +464,10 @@ def process_video(
     error: str | None = None
     try:
         with tempfile.TemporaryDirectory(dir=tmp_root) as tmp_dir:
-            audio_path = extract_audio(video, args["audio_track"], Path(tmp_dir))
+            track = args.get("audio_track")
+            if track is None:
+                track = detect_audio_track(video, args.get("language"))
+            audio_path = extract_audio(video, track, Path(tmp_dir))
             segments, diarize_model = transcribe_file(
                 audio_path,
                 model,
@@ -495,8 +539,8 @@ def main() -> None:
     parser.add_argument(
         "--audio-track",
         type=int,
-        default=0,
-        help="Audio track index to extract (default: 0)",
+        default=None,
+        help="Audio track index to extract (default: auto-detect)",
     )
     parser.add_argument(
         "--model-size",

@@ -18,7 +18,7 @@ The script relies on a few external tools and Python packages.
 - **Python**: 3.9 or newer
 - **Conda**: for managing the environment
 - **FFmpeg**: used for audio extraction
-- **Python packages**: `torch==1.10.*`, `pyannote.audio==0.0.1`, `whisperx`
+- **Python packages**: `torch==1.10.*`, `pyannote.audio==0.0.1`, `speechbrain==0.5.16`, `whisperx`
 
 ### Create a Conda Environment
 
@@ -29,17 +29,18 @@ conda env create -f environment.yml
 conda activate subwhisper
 ```
 
-This installs Python, `torch`, `pyannote.audio`, `whisperx`, and other
-dependencies.  Versions of `torch` and `pyannote.audio` are pinned to
-ensure compatibility with WhisperX's diarization models.  The `torch`
-entry is CPU‑only by default; edit `environment.yml` to choose a
+This installs Python, `torch`, `pyannote.audio`, `speechbrain`, `whisperx`,
+and other dependencies.  Versions of `torch`, `pyannote.audio`, and
+`speechbrain` are pinned to ensure compatibility with WhisperX's
+diarization models.  The `torch` entry is CPU‑only by default; edit
+`environment.yml` to choose a
 CUDA‑enabled build or add optional packages.
 
 #### Upgrading dependencies
 
-If you need newer features from `pyannote.audio` or `torch`, update the
+If you need newer features from `pyannote.audio`, `torch`, or `speechbrain`, update the
 version pins in `environment.yml` (or run `pip install --upgrade torch
-pyannote.audio`) and ensure that you download models compatible with the
+pyannote.audio speechbrain`) and ensure that you download models compatible with the
 new versions.  Refer to the respective project documentation for
 migration notes.
 
@@ -50,7 +51,7 @@ conda create -n subwhisper python=3.10
 conda activate subwhisper
 
 # Install dependencies
-pip install "torch==1.10.*" "pyannote.audio==0.0.1" whisperx
+pip install "torch==1.10.*" "pyannote.audio==0.0.1" "speechbrain==0.5.16" whisperx
 # Install ffmpeg (choose one of the following)
 conda install -c conda-forge ffmpeg    # via conda
 # or
@@ -58,6 +59,8 @@ sudo apt-get install ffmpeg            # on Debian/Ubuntu
 ```
 
 ## Usage
+
+Activate the `subwhisper` conda environment before running any commands.
 
 1. Place the videos you want to process in a directory.
 2. Run `generateSubtitles.py`, pointing it at the directory:

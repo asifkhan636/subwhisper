@@ -213,6 +213,12 @@ def transcribe_file(
     )
     segments: List[Dict[str, Any]] = result.get("segments", [])
 
+    # Align segments to the audio for more accurate timestamps
+    language = result.get("language") or options.get("language")
+    align_model, metadata = whisperx.load_align_model(language, device)
+    aligned = whisperx.align(segments, align_model, metadata, audio, device)
+    segments = aligned.get("segments", segments)
+
     if diarize_model is not None:
         logging.debug("Running diarization to assign speaker labels")
         try:

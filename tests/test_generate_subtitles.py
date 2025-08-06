@@ -113,21 +113,18 @@ def test_transcribe_file(gs, monkeypatch):
 
         return diar_fn
 
-    gs.ARGS["vad_onset"] = 0.3
-    gs.ARGS["vad_offset"] = 0.5
-    gs.ARGS["diarize"] = True
-    gs.DIARIZE_MODEL = None
-
     monkeypatch.setattr(gs.whisperx, "load_align_model", fake_load_align_model)
     monkeypatch.setattr(gs.whisperx, "align", fake_align)
     monkeypatch.setattr(gs.whisperx.diarize, "load_diarize_model", fake_load_diarize_model)
 
     model = FakeModel()
-    segments = gs.transcribe_file(
+    args = {"vad_onset": 0.3, "vad_offset": 0.5, "diarize": True}
+    segments, _ = gs.transcribe_file(
         audio_path,
         model,
         None,
         gs.torch.device("cpu"),
+        args,
         {},
     )
     assert model.last_kwargs["vad_filter"] is True

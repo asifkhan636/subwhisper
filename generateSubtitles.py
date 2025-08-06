@@ -25,10 +25,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Dict, Any
 
-REQUIRED_VERSIONS = {
-    "torch": "1.10.2",
+from packaging.version import parse as parse_version
+
+MIN_VERSIONS = {
+    "torch": "2.5.0",
     "whisperx": "3.4.2",
-    "pyannote.audio": "0.0.1",
+    "pyannote.audio": "3.3.0",
 }
 
 
@@ -54,49 +56,49 @@ def _check_dependencies() -> None:
 
     try:  # PyTorch
         import torch  # noqa: F401
-        if getattr(torch, "__version__", "") != REQUIRED_VERSIONS["torch"]:
+        if parse_version(getattr(torch, "__version__", "0")) < parse_version(MIN_VERSIONS["torch"]):
             wrong_versions.append(
-                "torch=={req} (found {found})".format(
-                    req=REQUIRED_VERSIONS["torch"],
+                "torch>={req} (found {found})".format(
+                    req=MIN_VERSIONS["torch"],
                     found=getattr(torch, "__version__", "unknown"),
                 )
             )
     except Exception:  # pragma: no cover - import failure path
         missing.append(
-            "torch=={req}: install with `pip install torch=={req}` (see https://pytorch.org for platform-specific instructions)".format(
-                req=REQUIRED_VERSIONS["torch"]
+            "torch>={req}: install with `pip install torch>={req}` (see https://pytorch.org for platform-specific instructions)".format(
+                req=MIN_VERSIONS["torch"]
             )
         )
 
     try:  # WhisperX
         import whisperx  # noqa: F401
-        if getattr(whisperx, "__version__", "") != REQUIRED_VERSIONS["whisperx"]:
+        if parse_version(getattr(whisperx, "__version__", "0")) < parse_version(MIN_VERSIONS["whisperx"]):
             wrong_versions.append(
-                "whisperx=={req} (found {found})".format(
-                    req=REQUIRED_VERSIONS["whisperx"],
+                "whisperx>={req} (found {found})".format(
+                    req=MIN_VERSIONS["whisperx"],
                     found=getattr(whisperx, "__version__", "unknown"),
                 )
             )
     except Exception:  # pragma: no cover - import failure path
         missing.append(
-            "whisperx=={req}: install with `pip install whisperx=={req}`".format(
-                req=REQUIRED_VERSIONS["whisperx"]
+            "whisperx>={req}: install with `pip install whisperx>={req}`".format(
+                req=MIN_VERSIONS["whisperx"]
             )
         )
 
     try:  # pyannote.audio
         import pyannote.audio  # noqa: F401
-        if getattr(pyannote.audio, "__version__", "") != REQUIRED_VERSIONS["pyannote.audio"]:
+        if parse_version(getattr(pyannote.audio, "__version__", "0")) < parse_version(MIN_VERSIONS["pyannote.audio"]):
             wrong_versions.append(
-                "pyannote.audio=={req} (found {found})".format(
-                    req=REQUIRED_VERSIONS["pyannote.audio"],
+                "pyannote.audio>={req} (found {found})".format(
+                    req=MIN_VERSIONS["pyannote.audio"],
                     found=getattr(pyannote.audio, "__version__", "unknown"),
                 )
             )
     except Exception:  # pragma: no cover - import failure path
         missing.append(
-            "pyannote.audio=={req}: install with `pip install pyannote.audio=={req}`".format(
-                req=REQUIRED_VERSIONS["pyannote.audio"]
+            "pyannote.audio>={req}: install with `pip install pyannote.audio>={req}`".format(
+                req=MIN_VERSIONS["pyannote.audio"]
             )
         )
 
@@ -113,10 +115,10 @@ def _check_dependencies() -> None:
         if wrong_versions:
             print("Incompatible versions detected:\n- " + "\n- ".join(wrong_versions))
             print(
-                "Install compatible versions with:\n  pip install torch=={torch} pyannote.audio=={pyannote} whisperx=={whisperx}".format(
-                    torch=REQUIRED_VERSIONS["torch"],
-                    pyannote=REQUIRED_VERSIONS["pyannote.audio"],
-                    whisperx=REQUIRED_VERSIONS["whisperx"],
+                "Install compatible versions with:\n  pip install torch>={torch} pyannote.audio>={pyannote} whisperx>={whisperx}".format(
+                    torch=MIN_VERSIONS["torch"],
+                    pyannote=MIN_VERSIONS["pyannote.audio"],
+                    whisperx=MIN_VERSIONS["whisperx"],
                 )
             )
         sys.exit(1)

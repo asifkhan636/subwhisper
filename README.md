@@ -58,6 +58,18 @@ conda install -c conda-forge ffmpeg    # via conda
 sudo apt-get install ffmpeg            # on Debian/Ubuntu
 ```
 
+#### Upgrading PyTorch Lightning checkpoints
+
+Older models saved with previous versions of PyTorch Lightning may need to be
+upgraded before use. If you see a warning about `pytorch_model.bin`, run:
+
+```bash
+python -m pytorch_lightning.utilities.upgrade_checkpoint /path/to/pytorch_model.bin
+```
+
+This converts the checkpoint to the latest format so it can be loaded without
+warnings.
+
 ## Usage
 
 Activate the `subwhisper` conda environment before running any commands.

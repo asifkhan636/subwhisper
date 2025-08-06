@@ -536,8 +536,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--language",
-        default='en',
-        help="Language for transcription (e.g. 'en'); default: auto-detect",
+        default=None,
+        help="Language for transcription (e.g. 'en'); leave unset for auto-detect",
     )
     parser.add_argument(
         "--word-timestamps",
@@ -583,9 +583,9 @@ def main() -> None:
     if not args.directory:
         parser.error("directory is required unless --list-audio-tracks is used")
 
-    options: Dict[str, Any] = {
-        "language": args.language,
-    }
+    options: Dict[str, Any] = {}
+    if args.language:
+        options["language"] = args.language
     if args.word_timestamps:
         options["word_timestamps"] = True
 

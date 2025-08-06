@@ -5,23 +5,28 @@
 `subwhisper` is a small utility for generating subtitle files from a
 directory of videos.  It uses
 [WhisperX](https://github.com/m-bain/whisperX) to perform speech-to-text
-transcription and optional voice‑activity detection (VAD) to trim
-silence.  The goal is to provide an easily hackable starting point for
-automated subtitle workflows.
+transcription.  WhisperX releases prior to `vad_filter` support require a
+separate voice‑activity detection (VAD) step if you need to trim silence.
+The goal is to provide an easily hackable starting point for automated
+subtitle workflows.
 
 ## Installation Prerequisites
 
 The script relies on a few external tools and Python packages. It has been
 tested with `whisperx>=3.4.2`, `torch>=2.5`, and `pyannote.audio>=3.3`.
 On startup, `generateSubtitles.py` checks that these minimum versions are
-installed and provides guidance if outdated releases are detected.
+installed and provides guidance if outdated releases are detected. WhisperX
+3.4.x does not support the `vad_filter` argument; to apply VAD you must either
+upgrade to a release that implements it or run VAD separately with
+`whisperx.load_vad_model` / `whisperx.detect_voice_activity` before
+transcription.
 
 ### Required Software
 
 - **Python**: 3.9 or newer
 - **Conda**: for managing the environment
 - **FFmpeg**: used for audio extraction
-- **Python packages**: `torch>=2.5`, `pyannote.audio>=3.3`, `speechbrain>=1.0`, `whisperx>=3.4.2`
+- **Python packages**: `torch>=2.5`, `pyannote.audio>=3.3`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`
 
 ### Create a Conda Environment
 
@@ -33,7 +38,7 @@ conda activate subwhisper
 ```
 
 This installs Python, `torch>=2.5`, `pyannote.audio>=3.3`,
-`speechbrain>=1.0`, `whisperx>=3.4.2`, and other dependencies. The `torch`
+`speechbrain>=1.0`, `whisperx>=3.4.2,<4`, and other dependencies. The `torch`
 entry is CPU‑only by default; edit `environment.yml` to choose a CUDA‑enabled
 build or add optional packages.
 
@@ -51,7 +56,7 @@ conda create -n subwhisper python=3.10
 conda activate subwhisper
 
 # Install dependencies
-pip install "torch>=2.5" "pyannote.audio>=3.3" "speechbrain>=1.0" "whisperx>=3.4.2"
+ pip install "torch>=2.5" "pyannote.audio>=3.3" "speechbrain>=1.0" "whisperx>=3.4.2,<4"
 # Install ffmpeg (choose one of the following)
 conda install -c conda-forge ffmpeg    # via conda
 # or
@@ -104,6 +109,14 @@ python generateSubtitles.py ./media \
 Subtitle files (`.srt` or `.vtt`) will be written alongside the
 corresponding videos by default.  Use `--output-dir` to place them under a
 separate directory while preserving the videos' relative paths.
+
+### Voice activity detection (VAD)
+
+The bundled WhisperX version does not expose VAD through `model.transcribe`.
+If you need to remove silence, either upgrade to a WhisperX release that adds
+the `vad_filter` argument or run a separate VAD pass via
+`whisperx.load_vad_model` and `whisperx.detect_voice_activity`, then
+transcribe only the detected speech segments.
 
 ## Usage Examples
 
@@ -165,14 +178,6 @@ python generateSubtitles.py ./videos --output-dir subs/
 Store the generated subtitle files under the `subs/` directory while
 preserving each video's relative path.
 
-### Tuning VAD thresholds and model size
-
-```bash
-python generateSubtitles.py ./videos --vad-onset 0.6 --vad-offset 0.4 --model-size large-v2
-```
-
-Adjust the VAD sensitivity and use a larger Whisper model for potentially
-better accuracy at the cost of speed.
 
 ## Logging
 
@@ -189,9 +194,6 @@ The CLI exposes a number of switches for customising behaviour:
 - `--audio-track`: select which audio track to extract (default: `1`; use `0` for first track). Run `--list-audio-tracks` to discover track indices
 - `--list-audio-tracks VIDEO`: list audio tracks for a single video and exit
 - `--model-size`: Whisper model size to load (e.g., `base`, `large-v2`; default: `large-v2`)
-- `--vad-model`: VAD backend (`pyannote/segmentation` by default)
-- `--vad-onset`: onset probability threshold for VAD (default: `0.5`)
-- `--vad-offset`: offset probability threshold for VAD (default: `0.363`)
 - `--output-format`: subtitle format (`srt` or `vtt`, default `srt`)
 - `--output-dir`: directory where subtitle files are written; relative paths
   under the input directory are preserved

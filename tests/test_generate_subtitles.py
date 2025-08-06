@@ -125,7 +125,7 @@ def test_transcribe_file(gs, monkeypatch):
 
     model = FakeModel()
     args = {"diarize": True}
-    options = {"vad_filter": True, "vad_parameters": {"onset": 0.3, "offset": 0.5}}
+    options = {"language": "en"}
     segments, _ = gs.transcribe_file(
         audio_path,
         model,
@@ -133,8 +133,7 @@ def test_transcribe_file(gs, monkeypatch):
         args,
         options,
     )
-    assert model.last_kwargs["vad_filter"] is True
-    assert model.last_kwargs["vad_parameters"] == {"onset": 0.3, "offset": 0.5}
+    assert model.last_kwargs == {"language": "en"}
     assert segments[0]["text"] == "aligned"
     assert segments[0]["speaker"] == "S1"
     assert calls["load_align_model"][1] == gs.torch.device("cpu")

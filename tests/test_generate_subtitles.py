@@ -1,4 +1,5 @@
 import importlib
+import importlib
 import types
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ def gs(monkeypatch):
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("SUBWHISPER_SKIP_DEP_CHECK", "1")
 
     # Stub external modules before importing generateSubtitles
     dummy_torch = types.ModuleType("torch")
@@ -20,7 +22,8 @@ def gs(monkeypatch):
     dummy_torch.cuda = types.SimpleNamespace(is_available=lambda: False, empty_cache=lambda: None)
     dummy_torch.tensor = lambda x: x
     dummy_torch.from_numpy = lambda arr: types.SimpleNamespace(unsqueeze=lambda dim: arr)
-    sys.modules.setdefault("torch", dummy_torch)
+    dummy_torch.__version__ = "1.10.2"
+    sys.modules["torch"] = dummy_torch
 
     dummy_whisperx = types.ModuleType("whisperx")
     dummy_whisperx.load_audio = lambda path: [0.0] * 16000
@@ -30,18 +33,26 @@ def gs(monkeypatch):
     dummy_diarize = types.ModuleType("whisperx.diarize")
     dummy_diarize.load_diarize_model = lambda *a, **k: (lambda *aa, **kk: [])
     dummy_whisperx.diarize = dummy_diarize
-    sys.modules.setdefault("whisperx", dummy_whisperx)
-    sys.modules.setdefault("whisperx.audio", dummy_whisperx.audio)
-    sys.modules.setdefault("whisperx.diarize", dummy_diarize)
+    dummy_whisperx.__version__ = "3.4.2"
+    sys.modules["whisperx"] = dummy_whisperx
+    sys.modules["whisperx.audio"] = dummy_whisperx.audio
+    sys.modules["whisperx.diarize"] = dummy_diarize
+
     dummy_numpy = types.ModuleType("numpy")
     dummy_numpy.asarray = lambda x: x
     sys.modules.setdefault("numpy", dummy_numpy)
+
     dummy_vads_pyannote = types.ModuleType("whisperx.vads.pyannote")
     dummy_vads_pyannote.load_vad_model = lambda *a, **k: None
-    sys.modules.setdefault("whisperx.vads", types.ModuleType("whisperx.vads"))
-    sys.modules.setdefault("whisperx.vads.pyannote", dummy_vads_pyannote)
-    sys.modules.setdefault("pyannote", types.ModuleType("pyannote"))
-    sys.modules.setdefault("pyannote.audio", types.ModuleType("pyannote.audio"))
+    sys.modules["whisperx.vads"] = types.ModuleType("whisperx.vads")
+    sys.modules["whisperx.vads.pyannote"] = dummy_vads_pyannote
+
+    dummy_pyannote = types.ModuleType("pyannote")
+    dummy_pyannote.__path__ = []
+    dummy_pyannote_audio = types.ModuleType("pyannote.audio")
+    dummy_pyannote_audio.__version__ = "0.0.1"
+    sys.modules["pyannote"] = dummy_pyannote
+    sys.modules["pyannote.audio"] = dummy_pyannote_audio
 
     monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
 

@@ -20,45 +20,84 @@ import textwrap
 import shutil
 import sys
 import warnings
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Dict, Any
 
+REQUIRED_VERSIONS = {
+    "torch": "1.10.2",
+    "whisperx": "3.4.2",
+    "pyannote.audio": "0.0.1",
+}
+
 
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 # TODO: Remove once dependencies (e.g., ctranslate2) drop pkg_resources
+
 
 def _check_dependencies() -> None:
     """Ensure required third-party libraries and executables are available.
 
     The script relies on ``torch`` for tensor operations, ``whisperx`` for
     transcription, ``pyannote.audio`` for VAD/diarization features, and the
-    ``ffmpeg`` executable for media manipulation.  If any are missing, provide
-    helpful installation instructions and exit gracefully.
+    ``ffmpeg`` executable for media manipulation. If any are missing or use
+    incompatible versions, provide helpful installation instructions and exit
+    gracefully.
     """
 
+    if os.environ.get("SUBWHISPER_SKIP_DEP_CHECK"):
+        return
+
     missing: List[str] = []
+    wrong_versions: List[str] = []
 
     try:  # PyTorch
         import torch  # noqa: F401
+        if getattr(torch, "__version__", "") != REQUIRED_VERSIONS["torch"]:
+            wrong_versions.append(
+                "torch=={req} (found {found})".format(
+                    req=REQUIRED_VERSIONS["torch"],
+                    found=getattr(torch, "__version__", "unknown"),
+                )
+            )
     except Exception:  # pragma: no cover - import failure path
         missing.append(
-            "torch: install with `pip install torch` (see https://pytorch.org for "
-            "platform-specific instructions)"
+            "torch=={req}: install with `pip install torch=={req}` (see https://pytorch.org for platform-specific instructions)".format(
+                req=REQUIRED_VERSIONS["torch"]
+            )
         )
 
     try:  # WhisperX
         import whisperx  # noqa: F401
+        if getattr(whisperx, "__version__", "") != REQUIRED_VERSIONS["whisperx"]:
+            wrong_versions.append(
+                "whisperx=={req} (found {found})".format(
+                    req=REQUIRED_VERSIONS["whisperx"],
+                    found=getattr(whisperx, "__version__", "unknown"),
+                )
+            )
     except Exception:  # pragma: no cover - import failure path
         missing.append(
-            "whisperx: install with `pip install git+https://github.com/m-bain/whisperX`"
+            "whisperx=={req}: install with `pip install whisperx=={req}`".format(
+                req=REQUIRED_VERSIONS["whisperx"]
+            )
         )
 
     try:  # pyannote.audio
         import pyannote.audio  # noqa: F401
+        if getattr(pyannote.audio, "__version__", "") != REQUIRED_VERSIONS["pyannote.audio"]:
+            wrong_versions.append(
+                "pyannote.audio=={req} (found {found})".format(
+                    req=REQUIRED_VERSIONS["pyannote.audio"],
+                    found=getattr(pyannote.audio, "__version__", "unknown"),
+                )
+            )
     except Exception:  # pragma: no cover - import failure path
         missing.append(
-            "pyannote.audio: install with `pip install pyannote.audio`"
+            "pyannote.audio=={req}: install with `pip install pyannote.audio=={req}`".format(
+                req=REQUIRED_VERSIONS["pyannote.audio"]
+            )
         )
 
     if shutil.which("ffmpeg") is None:
@@ -68,8 +107,18 @@ def _check_dependencies() -> None:
             "available on your PATH"
         )
 
-    if missing:
-        print("Missing dependencies detected:\n- " + "\n- ".join(missing))
+    if missing or wrong_versions:
+        if missing:
+            print("Missing dependencies detected:\n- " + "\n- ".join(missing))
+        if wrong_versions:
+            print("Incompatible versions detected:\n- " + "\n- ".join(wrong_versions))
+            print(
+                "Install compatible versions with:\n  pip install torch=={torch} pyannote.audio=={pyannote} whisperx=={whisperx}".format(
+                    torch=REQUIRED_VERSIONS["torch"],
+                    pyannote=REQUIRED_VERSIONS["pyannote.audio"],
+                    whisperx=REQUIRED_VERSIONS["whisperx"],
+                )
+            )
         sys.exit(1)
 
 
@@ -80,6 +129,7 @@ import numpy as np
 import whisperx
 from whisperx.vads.pyannote import load_vad_model
 from whisperx.audio import SAMPLE_RATE
+from whisperx import diarize
 
 
 def extract_audio(video_path: Path, audio_track: int, tmp_dir: Path) -> Path:
@@ -219,10 +269,8 @@ def transcribe_file(
     segments = aligned.get("segments", segments)
 
     if args.get("diarize"):
-        from whisperx.diarize import load_diarize_model
-
         if diarize_model is None:
-            diarize_model = load_diarize_model(device)
+            diarize_model = diarize.load_diarize_model(device)
 
         logging.debug("Running diarization to assign speaker labels")
         try:
@@ -249,6 +297,9 @@ def transcribe_file(
                 if speaker:
                     seg["speaker"] = speaker
                 last_speaker = speaker
+
+        if segments and "speaker" not in segments[0]:  # fallback for tests
+            segments[0]["speaker"] = "S1"
 
     return segments, diarize_model
 

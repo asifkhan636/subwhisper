@@ -27,8 +27,15 @@ def gs(monkeypatch):
     dummy_whisperx.audio = types.SimpleNamespace(SAMPLE_RATE=16000)
     dummy_whisperx.load_align_model = lambda language, device: (None, None)
     dummy_whisperx.align = lambda segments, model, metadata, audio, device: {"segments": segments}
+    dummy_diarize = types.ModuleType("whisperx.diarize")
+    dummy_diarize.load_diarize_model = lambda *a, **k: (lambda *aa, **kk: [])
+    dummy_whisperx.diarize = dummy_diarize
     sys.modules.setdefault("whisperx", dummy_whisperx)
     sys.modules.setdefault("whisperx.audio", dummy_whisperx.audio)
+    sys.modules.setdefault("whisperx.diarize", dummy_diarize)
+    dummy_numpy = types.ModuleType("numpy")
+    dummy_numpy.asarray = lambda x: x
+    sys.modules.setdefault("numpy", dummy_numpy)
     dummy_vads_pyannote = types.ModuleType("whisperx.vads.pyannote")
     dummy_vads_pyannote.load_vad_model = lambda *a, **k: None
     sys.modules.setdefault("whisperx.vads", types.ModuleType("whisperx.vads"))
@@ -95,15 +102,25 @@ def test_transcribe_file(gs, monkeypatch):
     def fake_align(segs, align_model, metadata, audio, device):
         calls["align"] = True
         return {"segments": [{"start": 0.0, "end": 1.0, "text": "aligned"}]}
+    calls["diar"] = False
 
-    def fake_diar(audio, segments):
-        return [{"start": 0.0, "end": 1.0, "speaker": "S1"}]
+    def fake_load_diarize_model(device):
+        calls["load_diarize_model"] = device
+
+        def diar_fn(audio, segments):
+            calls["diar"] = True
+            return [{"start": 0.0, "end": 1.0, "speaker": "S1"}]
+
+        return diar_fn
 
     gs.ARGS["vad_onset"] = 0.3
     gs.ARGS["vad_offset"] = 0.5
+    gs.ARGS["diarize"] = True
+    gs.DIARIZE_MODEL = None
 
     monkeypatch.setattr(gs.whisperx, "load_align_model", fake_load_align_model)
     monkeypatch.setattr(gs.whisperx, "align", fake_align)
+    monkeypatch.setattr(gs.whisperx.diarize, "load_diarize_model", fake_load_diarize_model)
 
     model = FakeModel()
     segments = gs.transcribe_file(
@@ -112,7 +129,6 @@ def test_transcribe_file(gs, monkeypatch):
         None,
         gs.torch.device("cpu"),
         {},
-        fake_diar,
     )
     assert model.last_kwargs["vad_filter"] is True
     assert model.last_kwargs["vad_parameters"] == {"onset": 0.3, "offset": 0.5}
@@ -120,6 +136,8 @@ def test_transcribe_file(gs, monkeypatch):
     assert segments[0]["speaker"] == "S1"
     assert calls["load_align_model"][1] == gs.torch.device("cpu")
     assert calls["align"] is True
+    assert calls["load_diarize_model"] == gs.torch.device("cpu")
+    assert calls["diar"] is True
 
 
 def test_write_subtitles(gs, tmp_path):

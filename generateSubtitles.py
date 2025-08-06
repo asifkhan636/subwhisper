@@ -197,7 +197,6 @@ def transcribe_file(
     vad_model: Any | None,
     device: torch.device,
     options: Dict[str, Any] | None = None,
-    diarize_model: Any | None = None,
 ) -> List[Dict[str, Any]]:
     """Transcribe *audio_path* with a preloaded WhisperX *model*."""
     options = options or {}
@@ -219,20 +218,38 @@ def transcribe_file(
     aligned = whisperx.align(segments, align_model, metadata, audio, device)
     segments = aligned.get("segments", segments)
 
-    if diarize_model is not None:
+    if ARGS.get("diarize"):
+        from whisperx.diarize import load_diarize_model
+
+        global DIARIZE_MODEL
+        if DIARIZE_MODEL is None:
+            DIARIZE_MODEL = load_diarize_model(device)
+
         logging.debug("Running diarization to assign speaker labels")
         try:
-            diarize_segments = diarize_model(audio, segments)
+            diarize_segments = DIARIZE_MODEL(audio, segments)
         except Exception as exc:  # pragma: no cover - best effort for varied APIs
-            logging.warning("Diarization failed, proceeding without speaker labels: %s", exc)
+            logging.warning(
+                "Diarization failed, proceeding without speaker labels: %s", exc
+            )
         else:
+            last_speaker: str | None = None
+            idx = 0
             for seg in segments:
-                for dseg in diarize_segments:
+                while idx < len(diarize_segments) and seg["start"] >= diarize_segments[idx][
+                    "end"
+                ]:
+                    idx += 1
+                speaker = None
+                if idx < len(diarize_segments):
+                    dseg = diarize_segments[idx]
                     if dseg["start"] <= seg["start"] < dseg["end"]:
                         speaker = dseg.get("speaker") or dseg.get("label")
-                        if speaker:
-                            seg["speaker"] = speaker
-                        break
+                if speaker is None:
+                    speaker = last_speaker
+                if speaker:
+                    seg["speaker"] = speaker
+                last_speaker = speaker
 
     return segments
 
@@ -367,8 +384,10 @@ ARGS: Dict[str, Any] = {}
 DEVICE: torch.device | None = None
 MODEL: Any | None = None
 VAD_MODEL: Any | None = None
-DIARIZE_MODEL: Any | None = None
 OPTIONS: Dict[str, Any] = {}
+
+# Lazily initialised diarization model
+DIARIZE_MODEL: Any | None = None
 
 
 def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
@@ -390,10 +409,6 @@ def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
         getattr(DEVICE, "type", DEVICE),
         ARGS["vad_model"],
     )
-    if ARGS.get("diarize"):
-        from whisperx.diarize import load_diarize_model
-
-        DIARIZE_MODEL = load_diarize_model(DEVICE)
 
 
 def process_video(video: Path) -> Dict[str, Any]:
@@ -412,7 +427,6 @@ def process_video(video: Path) -> Dict[str, Any]:
                 VAD_MODEL,
                 DEVICE,
                 OPTIONS,
-                DIARIZE_MODEL,
             )
             if not segments:
                 logging.warning("No subtitle segments were produced for %s", video)

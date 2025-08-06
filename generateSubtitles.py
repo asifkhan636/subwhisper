@@ -440,6 +440,11 @@ def process_video(video: Path) -> Dict[str, Any]:
                 OPTIONS,
                 DIARIZE_MODEL,
             )
+            if not segments:
+                logging.warning("No subtitle segments were produced for %s", video)
+                with open("failed_subtitles.log", "a", encoding="utf-8") as failed:
+                    failed.write(f"{video}: no segments\n")
+                raise ValueError("Transcription produced no segments")
             output_path = video
             if ARGS.get("output_dir"):
                 root_dir = Path(ARGS["directory"])

@@ -25,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Dict, Any
 
+from importlib.metadata import PackageNotFoundError, version as get_version
 from packaging.version import parse as parse_version
 
 MIN_VERSIONS = {
@@ -39,14 +40,7 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 
 def _check_dependencies() -> None:
-    """Ensure required third-party libraries and executables are available.
-
-    The script relies on ``torch`` for tensor operations, ``whisperx`` for
-    transcription, ``pyannote.audio`` for VAD/diarization features, and the
-    ``ffmpeg`` executable for media manipulation. If any are missing or use
-    incompatible versions, provide helpful installation instructions and exit
-    gracefully.
-    """
+    """Ensure required third-party libraries and executables are available."""
 
     if os.environ.get("SUBWHISPER_SKIP_DEP_CHECK"):
         return
@@ -54,59 +48,25 @@ def _check_dependencies() -> None:
     missing: List[str] = []
     wrong_versions: List[str] = []
 
-    try:  # PyTorch
-        import torch  # noqa: F401
-        if parse_version(getattr(torch, "__version__", "0")) < parse_version(MIN_VERSIONS["torch"]):
-            wrong_versions.append(
-                "torch>={req} (found {found})".format(
-                    req=MIN_VERSIONS["torch"],
-                    found=getattr(torch, "__version__", "unknown"),
-                )
+    for pkg, min_version in MIN_VERSIONS.items():
+        try:
+            installed_version = get_version(pkg)
+        except PackageNotFoundError:
+            missing.append(
+                f"{pkg}>={min_version}: install with `pip install {pkg}>={min_version}`"
             )
-    except Exception:  # pragma: no cover - import failure path
-        missing.append(
-            "torch>={req}: install with `pip install torch>={req}` (see https://pytorch.org for platform-specific instructions)".format(
-                req=MIN_VERSIONS["torch"]
-            )
-        )
+            continue
+        except Exception:
+            installed_version = None
 
-    try:  # WhisperX
-        import whisperx  # noqa: F401
-        if parse_version(getattr(whisperx, "__version__", "0")) < parse_version(MIN_VERSIONS["whisperx"]):
+        if installed_version and parse_version(installed_version) < parse_version(min_version):
             wrong_versions.append(
-                "whisperx>={req} (found {found})".format(
-                    req=MIN_VERSIONS["whisperx"],
-                    found=getattr(whisperx, "__version__", "unknown"),
-                )
+                f"{pkg}>={min_version} (found {installed_version})"
             )
-    except Exception:  # pragma: no cover - import failure path
-        missing.append(
-            "whisperx>={req}: install with `pip install whisperx>={req}`".format(
-                req=MIN_VERSIONS["whisperx"]
-            )
-        )
-
-    try:  # pyannote.audio
-        import pyannote.audio  # noqa: F401
-        if parse_version(getattr(pyannote.audio, "__version__", "0")) < parse_version(MIN_VERSIONS["pyannote.audio"]):
-            wrong_versions.append(
-                "pyannote.audio>={req} (found {found})".format(
-                    req=MIN_VERSIONS["pyannote.audio"],
-                    found=getattr(pyannote.audio, "__version__", "unknown"),
-                )
-            )
-    except Exception:  # pragma: no cover - import failure path
-        missing.append(
-            "pyannote.audio>={req}: install with `pip install pyannote.audio>={req}`".format(
-                req=MIN_VERSIONS["pyannote.audio"]
-            )
-        )
 
     if shutil.which("ffmpeg") is None:
         missing.append(
-            "ffmpeg executable not found: install via package manager (e.g., "
-            "`sudo apt install ffmpeg` or `brew install ffmpeg`) and ensure it is "
-            "available on your PATH"
+            "ffmpeg executable not found: install via package manager (e.g., `sudo apt install ffmpeg` or `brew install ffmpeg`) and ensure it is available on your PATH"
         )
 
     if missing or wrong_versions:
@@ -115,11 +75,8 @@ def _check_dependencies() -> None:
         if wrong_versions:
             print("Incompatible versions detected:\n- " + "\n- ".join(wrong_versions))
             print(
-                "Install compatible versions with:\n  pip install torch>={torch} pyannote.audio>={pyannote} whisperx>={whisperx}".format(
-                    torch=MIN_VERSIONS["torch"],
-                    pyannote=MIN_VERSIONS["pyannote.audio"],
-                    whisperx=MIN_VERSIONS["whisperx"],
-                )
+                "Install compatible versions with:\n  pip install "
+                + " ".join(f"{p}>={v}" for p, v in MIN_VERSIONS.items())
             )
         sys.exit(1)
 

@@ -42,11 +42,6 @@ def gs(monkeypatch):
     dummy_numpy.asarray = lambda x: x
     sys.modules.setdefault("numpy", dummy_numpy)
 
-    dummy_vads_pyannote = types.ModuleType("whisperx.vads.pyannote")
-    dummy_vads_pyannote.load_vad_model = lambda *a, **k: None
-    sys.modules["whisperx.vads"] = types.ModuleType("whisperx.vads")
-    sys.modules["whisperx.vads.pyannote"] = dummy_vads_pyannote
-
     dummy_pyannote = types.ModuleType("pyannote")
     dummy_pyannote.__path__ = []
     dummy_pyannote_audio = types.ModuleType("pyannote.audio")
@@ -134,7 +129,6 @@ def test_transcribe_file(gs, monkeypatch):
     segments, _ = gs.transcribe_file(
         audio_path,
         model,
-        None,
         gs.torch.device("cpu"),
         args,
         options,

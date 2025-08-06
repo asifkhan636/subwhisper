@@ -10,8 +10,6 @@ timestamps, parallelism, or explicit language overrides).
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
-from concurrent.futures.process import BrokenProcessPool
 import gc
 import json
 import logging
@@ -196,8 +194,10 @@ def transcribe_file(
     model: Any,
     vad_model: Any | None,
     device: torch.device,
+    args: Dict[str, Any],
     options: Dict[str, Any] | None = None,
-) -> List[Dict[str, Any]]:
+    diarize_model: Any | None = None,
+) -> tuple[List[Dict[str, Any]], Any | None]:
     """Transcribe *audio_path* with a preloaded WhisperX *model*."""
     options = options or {}
     logging.debug("Loading audio for transcription: %s", audio_path)
@@ -207,7 +207,7 @@ def transcribe_file(
     result = model.transcribe(
         audio,
         vad_filter=True,
-        vad_parameters={"onset": ARGS["vad_onset"], "offset": ARGS["vad_offset"]},
+        vad_parameters={"onset": args["vad_onset"], "offset": args["vad_offset"]},
         **options,
     )
     segments: List[Dict[str, Any]] = result.get("segments", [])
@@ -218,16 +218,15 @@ def transcribe_file(
     aligned = whisperx.align(segments, align_model, metadata, audio, device)
     segments = aligned.get("segments", segments)
 
-    if ARGS.get("diarize"):
+    if args.get("diarize"):
         from whisperx.diarize import load_diarize_model
 
-        global DIARIZE_MODEL
-        if DIARIZE_MODEL is None:
-            DIARIZE_MODEL = load_diarize_model(device)
+        if diarize_model is None:
+            diarize_model = load_diarize_model(device)
 
         logging.debug("Running diarization to assign speaker labels")
         try:
-            diarize_segments = DIARIZE_MODEL(audio, segments)
+            diarize_segments = diarize_model(audio, segments)
         except Exception as exc:  # pragma: no cover - best effort for varied APIs
             logging.warning(
                 "Diarization failed, proceeding without speaker labels: %s", exc
@@ -251,7 +250,7 @@ def transcribe_file(
                     seg["speaker"] = speaker
                 last_speaker = speaker
 
-    return segments
+    return segments, diarize_model
 
 
 def _format_timestamp(seconds: float) -> str:
@@ -379,39 +378,44 @@ def discover_videos(directory: Path, extensions: List[str]) -> List[Path]:
     return files
 
 
-# Globals initialised in worker processes
-ARGS: Dict[str, Any] = {}
-DEVICE: torch.device | None = None
-MODEL: Any | None = None
-VAD_MODEL: Any | None = None
-OPTIONS: Dict[str, Any] = {}
-
-# Lazily initialised diarization model
-DIARIZE_MODEL: Any | None = None
-
-
-def _init_worker(args: Dict[str, Any], options: Dict[str, Any]) -> None:
-    """Initializer for worker processes to load heavy models once."""
-    global ARGS, DEVICE, MODEL, VAD_MODEL, DIARIZE_MODEL, OPTIONS
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
-    ARGS = args
-    OPTIONS = options
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    compute_type = "float16" if getattr(DEVICE, "type", DEVICE) == "cuda" else "int8"
-    device_str = DEVICE.type if hasattr(DEVICE, "type") else str(DEVICE)
-    MODEL = whisperx.load_model(
-        ARGS["model_size"],
+def worker_factory(args: Dict[str, Any], options: Dict[str, Any]):
+    """Create a worker function with models loaded in its scope."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    compute_type = "float16" if getattr(device, "type", device) == "cuda" else "int8"
+    device_str = device.type if hasattr(device, "type") else str(device)
+    model = whisperx.load_model(
+        args["model_size"],
         device_str,
         compute_type=compute_type,
-        language=ARGS.get("language"),
+        language=args.get("language"),
     )
-    VAD_MODEL = load_vad_model(
-        getattr(DEVICE, "type", DEVICE),
-        ARGS["vad_model"],
-    )
+    vad_model = load_vad_model(getattr(device, "type", device), args["vad_model"])
+    diarize_model: Any | None = None
 
+    def worker(video: Path) -> Dict[str, Any]:
+        nonlocal diarize_model
+        result, diarize_model = process_video(
+            video,
+            args,
+            options,
+            model,
+            vad_model,
+            device,
+            diarize_model,
+        )
+        return result
 
-def process_video(video: Path) -> Dict[str, Any]:
+    return worker
+
+def process_video(
+    video: Path,
+    args: Dict[str, Any],
+    options: Dict[str, Any],
+    model: Any,
+    vad_model: Any | None,
+    device: torch.device,
+    diarize_model: Any | None,
+) -> tuple[Dict[str, Any], Any | None]:
     """Process a single video file and capture timing and error details."""
     start_time = datetime.now().isoformat()
     logging.info("Processing %s", video)
@@ -420,13 +424,15 @@ def process_video(video: Path) -> Dict[str, Any]:
     error: str | None = None
     try:
         with tempfile.TemporaryDirectory(dir=tmp_root) as tmp_dir:
-            audio_path = extract_audio(video, ARGS["audio_track"], Path(tmp_dir))
-            segments = transcribe_file(
+            audio_path = extract_audio(video, args["audio_track"], Path(tmp_dir))
+            segments, diarize_model = transcribe_file(
                 audio_path,
-                MODEL,
-                VAD_MODEL,
-                DEVICE,
-                OPTIONS,
+                model,
+                vad_model,
+                device,
+                args,
+                options,
+                diarize_model,
             )
             if not segments:
                 logging.warning("No subtitle segments were produced for %s", video)
@@ -434,36 +440,39 @@ def process_video(video: Path) -> Dict[str, Any]:
                     failed.write(f"{video}: no segments\n")
                 raise ValueError("Transcription produced no segments")
             output_path = video
-            if ARGS.get("output_dir"):
-                root_dir = Path(ARGS["directory"])
+            if args.get("output_dir"):
+                root_dir = Path(args["directory"])
                 rel_path = video.relative_to(root_dir)
-                output_path = Path(ARGS["output_dir"]) / rel_path
-            output_path = output_path.with_suffix("." + ARGS["output_format"])
+                output_path = Path(args["output_dir"]) / rel_path
+            output_path = output_path.with_suffix("." + args["output_format"])
             output_path.parent.mkdir(parents=True, exist_ok=True)
             write_subtitles(
                 segments,
                 output_path,
-                fmt=ARGS["output_format"],
-                max_line_width=ARGS["max_line_width"],
-                max_lines=ARGS["max_lines"],
-                case=ARGS.get("case"),
-                strip_punctuation=ARGS.get("strip_punctuation", False),
+                fmt=args["output_format"],
+                max_line_width=args["max_line_width"],
+                max_lines=args["max_lines"],
+                case=args.get("case"),
+                strip_punctuation=args.get("strip_punctuation", False),
             )
     except Exception as exc:  # pragma: no cover - pragmatic logging
         logging.exception("Failed to generate subtitles for %s", video)
         error = str(exc)
     finally:
         gc.collect()
-        if DEVICE and DEVICE.type == "cuda":
+        if device and getattr(device, "type", str(device)) == "cuda":
             torch.cuda.empty_cache()
     end_time = datetime.now().isoformat()
-    return {
-        "video": str(video),
-        "start": start_time,
-        "end": end_time,
-        "error": error,
-        "success": error is None,
-    }
+    return (
+        {
+            "video": str(video),
+            "start": start_time,
+            "end": end_time,
+            "error": error,
+            "success": error is None,
+        },
+        diarize_model,
+    )
 
 
 def main() -> None:
@@ -559,12 +568,6 @@ def main() -> None:
         action="store_true",
         help="Enable speaker diarization",
     )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=1,
-        help="Number of parallel worker processes",
-    )
     args = parser.parse_args()
     valid_models = {
         "tiny.en",
@@ -651,44 +654,15 @@ def main() -> None:
     log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     args_dict = vars(args)
+    worker = worker_factory(args_dict, options)
     with open(log_dir / "subtitle_run.json", "a", encoding="utf-8") as run_log, \
         open("failed_subtitles.log", "a", encoding="utf-8") as failed_log:
-        try:
-            executor = concurrent.futures.ProcessPoolExecutor(
-                max_workers=args.workers,
-                initializer=_init_worker,
-                initargs=(args_dict, options),
-            )
-        except BrokenProcessPool as exc:  # pragma: no cover
-            logging.error(
-                "Worker initialization failed: %s", exc.__cause__ or exc
-            )
-            sys.exit(1)
-
-        with executor:
-            try:
-                future_to_video = {
-                    executor.submit(process_video, v): v for v in videos
-                }
-            except BrokenProcessPool as exc:  # pragma: no cover
-                logging.error(
-                    "Worker initialization failed: %s", exc.__cause__ or exc
-                )
-                sys.exit(1)
-            for future in concurrent.futures.as_completed(future_to_video):
-                video = future_to_video[future]
-                try:
-                    result = future.result()
-                except Exception as exc:  # pragma: no cover - worker failure path
-                    logging.error("Processing %s failed: %s", video, exc)
-                    failed_log.write(f"{video}: {exc}\n")
-                    continue
-                json.dump(result, run_log)
-                run_log.write("\n")
-                if not result["success"]:
-                    failed_log.write(
-                        f"{result['video']}: {result['error']}\n"
-                    )
+        for video in videos:
+            result = worker(video)
+            json.dump(result, run_log)
+            run_log.write("\n")
+            if not result["success"]:
+                failed_log.write(f"{result['video']}: {result['error']}\n")
     # Cleaning up temp directory is intentionally left out to aid debugging.  In
     # production one could remove it or place it under ``TemporaryDirectory``.
 

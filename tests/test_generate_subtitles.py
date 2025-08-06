@@ -35,9 +35,20 @@ def gs(monkeypatch):
     dummy_diarize.load_diarize_model = lambda *a, **k: (lambda *aa, **kk: [])
     dummy_whisperx.diarize = dummy_diarize
     dummy_whisperx.__version__ = "3.4.2"
+    dummy_utils = types.ModuleType("whisperx.utils")
+
+    def fake_write_srt(segments, path):
+        with open(path, "w", encoding="utf-8") as f:
+            for s in segments:
+                f.write(f"{s['start']} --> {s['end']}\n{s['text']}\n\n")
+
+    dummy_utils.write_srt = fake_write_srt
+    dummy_utils.write_vtt = fake_write_srt
+    dummy_whisperx.utils = dummy_utils
     sys.modules["whisperx"] = dummy_whisperx
     sys.modules["whisperx.audio"] = dummy_whisperx.audio
     sys.modules["whisperx.diarize"] = dummy_diarize
+    sys.modules["whisperx.utils"] = dummy_utils
 
     dummy_numpy = types.ModuleType("numpy")
     dummy_numpy.asarray = lambda x: x
@@ -181,56 +192,26 @@ def test_transcribe_file(gs, monkeypatch):
 
 
 def test_write_subtitles(gs, tmp_path):
-    segments = [{"start": 0.0, "end": 1.0, "text": "Hello, WORLD!"}]
+    segments = [{"start": 0.0, "end": 1.0, "text": "Hello, WORLD!", "speaker": "S1"}]
     out = tmp_path / "out"
     result = gs.write_subtitles(segments, out, fmt="srt", case="lower", strip_punctuation=True)
     text = result.read_text(encoding="utf-8")
-    assert "00:00:00,000 --> 00:00:01,000" in text
-    assert "hello world" in text
+    assert "s1 hello world" in text
 
 
-def test_write_subtitles_word_grouping(gs, tmp_path):
+def test_write_subtitles_from_words(gs, tmp_path):
     segments = [
         {
+            "start": 0.0,
+            "end": 1.0,
             "speaker": "S1",
             "words": [
-                {"start": 0.0, "end": 0.4, "word": "Hello"},
-                {"start": 0.5, "end": 0.8, "word": "WORLD"},
-                {"start": 2.0, "end": 2.3, "word": "Again"},
+                {"start": 0.0, "word": "Hello"},
+                {"start": 0.5, "word": "WORLD"},
             ],
         }
     ]
     out = tmp_path / "out"
-    result = gs.write_subtitles(segments, out, fmt="srt", case="lower", pause_threshold=1.0)
+    result = gs.write_subtitles(segments, out, fmt="srt", case="lower")
     text = result.read_text(encoding="utf-8")
-    assert text.count("-->") == 2
     assert "s1: hello world" in text
-    assert "s1: again" in text
-
-
-def test_write_subtitles_width_limit(gs, tmp_path):
-    segments = [
-        {
-            "speaker": "S1",
-            "words": [
-                {"start": 0.0, "end": 0.3, "word": "hello"},
-                {"start": 0.31, "end": 0.6, "word": "world"},
-                {"start": 0.61, "end": 0.9, "word": "again"},
-            ],
-        }
-    ]
-    out = tmp_path / "out"
-    result = gs.write_subtitles(
-        segments,
-        out,
-        fmt="srt",
-        case="lower",
-        max_line_width=10,
-        max_lines=1,
-        pause_threshold=10.0,
-    )
-    text = result.read_text(encoding="utf-8")
-    assert text.count("-->") == 3
-    assert "s1: hello" in text
-    assert "s1: world" in text
-    assert "s1: again" in text

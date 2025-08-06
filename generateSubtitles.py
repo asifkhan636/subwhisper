@@ -16,7 +16,6 @@ import logging
 import re
 import subprocess
 import tempfile
-import textwrap
 import shutil
 import sys
 import warnings
@@ -306,43 +305,17 @@ def transcribe_file(
 
     return segments, diarize_model
 
-
-def _format_timestamp(seconds: float) -> str:
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int((seconds - int(seconds)) * 1000)
-    return f"{hours:02}:{minutes:02}:{secs:02},{millis:03}"
-
-
 def write_subtitles(
     segments: Iterable[Dict[str, Any]],
     output_path: Path,
     fmt: str = "srt",
-    max_line_width: int = 42,
-    max_lines: int = 2,
     case: str | None = None,
     strip_punctuation: bool = False,
-    pause_threshold: float = 1.0,
 ) -> Path:
-    """Write *segments* to *output_path* using the requested subtitle *fmt*.
+    """Normalize ``segments`` and delegate subtitle writing to WhisperX utils."""
 
-    Parameters
-    ----------
-    segments:
-        Iterable of dictionaries containing ``start``, ``end`` and ``text`` keys.
-        When present, a ``speaker`` field is prefixed to the subtitle text.
-    output_path:
-        Target path for the subtitle file.
-    fmt:
-        Output format. Currently ``"srt"`` and ``"vtt"`` are supported.
-    max_line_width, max_lines:
-        Controls simple line wrapping of subtitle text.
-    case:
-        Optional case normalization for subtitle text ("lower" or "upper").
-    strip_punctuation:
-        Remove punctuation from subtitle text when ``True``.
-    """
+    from whisperx.utils import write_srt, write_vtt  # type: ignore
+
     output_path = output_path.with_suffix(f".{fmt}")
     logging.debug("Writing subtitles: %s", output_path)
 
@@ -359,67 +332,21 @@ def write_subtitles(
             text = text.upper()
         return text
 
-    cues: List[tuple[float, float, str]] = []
+    cleaned: List[Dict[str, Any]] = []
     for seg in segments:
-        speaker = seg.get("speaker")
-        words = seg.get("words")
-        if words:
-            phrase_words: List[str] = []
-            phrase_start = 0.0
-            last_end = 0.0
-            for w in words:
-                w_start = w["start"]
-                w_end = w.get("end", w_start)
-                w_text = _normalize(w.get("word", w.get("text", "")).strip())
-                if not phrase_words:
-                    phrase_start = w_start
-                    phrase_words.append(w_text)
-                else:
-                    gap = w_start - last_end
-                    candidate = phrase_words + [w_text]
-                    wrapped = textwrap.wrap(" ".join(candidate), width=max_line_width)
-                    if gap > pause_threshold or len(wrapped) > max_lines:
-                        text = " ".join(phrase_words)
-                        if speaker:
-                            text = f"{speaker}: {text}"
-                        cues.append((phrase_start, last_end, text))
-                        phrase_start = w_start
-                        phrase_words = [w_text]
-                    else:
-                        phrase_words.append(w_text)
-                last_end = w_end
-            if phrase_words:
-                text = " ".join(phrase_words)
-                if speaker:
-                    text = f"{speaker}: {text}"
-                cues.append((phrase_start, last_end, text))
-        else:
-            text = seg["text"].strip()
-            if speaker:
-                text = f"{speaker}: {text}"
-            text = _normalize(text)
-            cues.append((seg["start"], seg["end"], text))
+        new_seg = {k: v for k, v in seg.items() if k != "words"}
+        text = seg.get("text")
+        if text is None and seg.get("words"):
+            text = " ".join(w.get("word", w.get("text", "")) for w in seg["words"])
+        if seg.get("speaker"):
+            text = f"{seg['speaker']}: {text}"
+        new_seg["text"] = _normalize(text or "")
+        cleaned.append(new_seg)
 
-    with output_path.open("w", encoding="utf-8") as f:
-        if fmt == "srt":
-            idx = 1
-            for start, end, text in cues:
-                text = _normalize(text)
-                text = textwrap.fill(text, width=max_line_width)
-                lines = text.splitlines()[:max_lines]
-                f.write(f"{idx}\n{_format_timestamp(start)} --> {_format_timestamp(end)}\n")
-                f.write("\n".join(lines) + "\n\n")
-                idx += 1
-        else:  # WEBVTT
-            f.write("WEBVTT\n\n")
-            for start, end, text in cues:
-                text = _normalize(text)
-                text = textwrap.fill(text, width=max_line_width)
-                lines = text.splitlines()[:max_lines]
-                f.write(
-                    f"{_format_timestamp(start).replace(',', '.')} --> {_format_timestamp(end).replace(',', '.')}\n"
-                )
-                f.write("\n".join(lines) + "\n\n")
+    if fmt == "srt":
+        write_srt(cleaned, str(output_path))
+    else:
+        write_vtt(cleaned, str(output_path))
 
     return output_path
 
@@ -503,8 +430,6 @@ def process_video(
                 segments,
                 output_path,
                 fmt=args["output_format"],
-                max_line_width=args["max_line_width"],
-                max_lines=args["max_lines"],
                 case=args.get("case"),
                 strip_punctuation=args.get("strip_punctuation", False),
             )

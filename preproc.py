@@ -3,6 +3,9 @@ import logging
 import subprocess
 from typing import Optional
 
+import noisereduce as nr
+import soundfile as sf
+
 logger = logging.getLogger(__name__)
 
 
@@ -110,3 +113,56 @@ def extract_audio(
         logger.error("ffmpeg failed: %s", err.strip())
         raise RuntimeError("ffmpeg audio extraction failed") from exc
     return output_path
+
+
+def denoise_audio(audio_path: str, output_path: str, aggressiveness: float = 0.85) -> str:
+    """Denoise an audio file using spectral gating.
+
+    Parameters
+    ----------
+    audio_path: str
+        Path to the input audio file.
+    output_path: str
+        Destination path for the denoised audio WAV.
+    aggressiveness: float, optional
+        Value between 0 and 1 controlling noise reduction strength.
+
+    Returns
+    -------
+    str
+        Path to the denoised WAV file.
+    """
+    logger.info("Loading audio from %s", audio_path)
+    data, rate = sf.read(audio_path)
+    logger.info("Applying noise reduction (aggressiveness=%s)", aggressiveness)
+    reduced = nr.reduce_noise(y=data, sr=rate, prop_decrease=aggressiveness)
+    logger.info("Writing denoised audio to %s", output_path)
+    sf.write(output_path, reduced, rate)
+    return output_path
+
+
+if __name__ == "__main__":
+    import argparse
+
+    logging.basicConfig(level=logging.INFO)
+
+    parser = argparse.ArgumentParser(description="Audio preprocessing utilities")
+    subparsers = parser.add_subparsers(dest="command")
+
+    denoise_parser = subparsers.add_parser("denoise", help="Apply noise reduction to an audio file")
+    denoise_parser.add_argument("audio_path", help="Path to the input audio file")
+    denoise_parser.add_argument(
+        "--output",
+        default="denoised.wav",
+        help="Destination path for the denoised WAV",
+    )
+    denoise_parser.add_argument(
+        "--aggressiveness",
+        type=float,
+        default=0.85,
+        help="Noise reduction aggressiveness between 0 and 1",
+    )
+
+    args = parser.parse_args()
+    if args.command == "denoise":
+        denoise_audio(args.audio_path, args.output, aggressiveness=args.aggressiveness)

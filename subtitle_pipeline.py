@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
 import pysubs2
 import textwrap
 from format_subtitles import apply_corrections, load_corrections
+
+
+logger = logging.getLogger(__name__)
 
 
 def load_segments(path: Path) -> pysubs2.SSAFile:
@@ -74,6 +78,12 @@ def enforce_limits(
             lines = lines[:max_lines]
         ev.text = "\\N".join(lines)
         if ev.end - ev.start > max_ms:
+            logger.debug(
+                "Trimming duration of event at %.2fs from %.2fs to %.2fs",
+                ev.start / 1000,
+                (ev.end - ev.start) / 1000,
+                max_ms / 1000,
+            )
             ev.end = ev.start + max_ms
 
     # Then enforce minimum gaps and re-check durations. Merge events that
@@ -84,8 +94,17 @@ def enforce_limits(
         curr = subs.events[i]
         required_start = prev.end + gap_ms
         if curr.start < required_start:
+            logger.debug(
+                "Shifting start of event at %.2fs by %.2fs to enforce gap",
+                curr.start / 1000,
+                (required_start - curr.start) / 1000,
+            )
             curr.start = required_start
             if curr.start >= curr.end:
+                logger.debug(
+                    "Merging event at %.2fs with previous due to overlap",
+                    curr.start / 1000,
+                )
                 prev.text = prev.plaintext + "\\N" + curr.plaintext
                 prev.end = max(prev.end, curr.end)
                 subs.events.pop(i)
@@ -94,9 +113,21 @@ def enforce_limits(
                     lines = lines[:max_lines]
                 prev.text = "\\N".join(lines)
                 if prev.end - prev.start > max_ms:
+                    logger.debug(
+                        "Trimming duration of merged event at %.2fs from %.2fs to %.2fs",
+                        prev.start / 1000,
+                        (prev.end - prev.start) / 1000,
+                        max_ms / 1000,
+                    )
                     prev.end = prev.start + max_ms
                 continue
         if curr.end - curr.start > max_ms:
+            logger.debug(
+                "Trimming duration of event at %.2fs from %.2fs to %.2fs",
+                curr.start / 1000,
+                (curr.end - curr.start) / 1000,
+                max_ms / 1000,
+            )
             curr.end = curr.start + max_ms
         i += 1
 
@@ -217,13 +248,25 @@ def main() -> None:  # pragma: no cover - CLI entry point
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--log-file",
+        help="Optional file to write logs to",
+    )
 
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.INFO,
-        format="%(levelname)s: %(message)s",
-    )
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(log_level)
+    formatter = logging.Formatter("%(levelname)s: %(message)s")
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    root_logger.addHandler(stream_handler)
+    if getattr(args, "log_file", None):
+        file_handler = logging.FileHandler(args.log_file)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
 
     rules = load_corrections(Path(args.corrections)) if args.corrections else None
 
@@ -233,11 +276,26 @@ def main() -> None:  # pragma: no cover - CLI entry point
         if isinstance(data, dict) and "segments" in data:
             data = data["segments"]
         if args.skip_music:
-            data = [s for s in data if not s.get("is_music")]
+            filtered = []
+            for seg in data:
+                if seg.get("is_music"):
+                    logger.debug(
+                        "Skipping music segment %.2f-%.2f",
+                        seg.get("start", 0.0),
+                        seg.get("end", 0.0),
+                    )
+                    continue
+                filtered.append(seg)
+            data = filtered
         subs = pysubs2.load_from_whisper(data)
+        corrections = 0
         if rules:
             for ev in subs.events:
-                fixed = apply_corrections(ev.plaintext, rules)
+                original = ev.plaintext
+                fixed = apply_corrections(original, rules)
+                if fixed != original:
+                    corrections += 1
+                    logger.debug("Replaced text: %r -> %r", original, fixed)
                 ev.text = fixed.replace("\n", "\\N")
         enforce_limits(
             subs,
@@ -250,6 +308,20 @@ def main() -> None:  # pragma: no cover - CLI entry point
             spellcheck_lines(subs)
         out_txt = out_srt.with_suffix(".txt") if args.transcript else None
         write_outputs(subs, out_srt, out_txt)
+
+        total = len(subs.events)
+        avg_lines = (
+            sum(ev.text.count("\\N") + 1 for ev in subs.events) / total
+            if total
+            else 0.0
+        )
+        logger.info(
+            "Processed %s: subtitles=%d avg_lines=%.2f corrections=%d",
+            seg_path,
+            total,
+            avg_lines,
+            corrections,
+        )
 
     if args.batch_dir:
         batch_root = Path(args.batch_dir)

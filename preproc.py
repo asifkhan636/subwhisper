@@ -1,9 +1,10 @@
 import json
 import logging
 import subprocess
-from typing import Optional
+from typing import List, Optional, Tuple
 import shutil
 
+import librosa
 import noisereduce as nr
 import soundfile as sf
 
@@ -190,6 +191,65 @@ def normalize_audio(input_wav: str, output_wav: str, enabled: bool = True) -> st
     return output_wav
 
 
+def detect_music_segments(audio_path: str, threshold: float = 0.5) -> List[Tuple[float, float]]:
+    """Detect likely music segments within an audio file.
+
+    The function separates the harmonic and percussive components of the
+    waveform using :func:`librosa.effects.hpss`. It then computes the
+    percussive-to-harmonic energy ratio over short windows and returns the
+    start and end times of intervals whose ratio exceeds ``threshold``. All
+    detected segments are also written to ``music_segments.json`` in the
+    current working directory.
+
+    Parameters
+    ----------
+    audio_path: str
+        Path to the input audio file.
+    threshold: float, optional
+        Minimum percussive-to-harmonic energy ratio to qualify as a music
+        segment. Defaults to ``0.5``.
+
+    Returns
+    -------
+    list of tuple(float, float)
+        A list of ``(start, end)`` pairs in seconds marking detected music
+        regions.
+    """
+
+    logger.info("Loading audio from %s", audio_path)
+    y, sr = librosa.load(audio_path, sr=None, mono=True)
+    logger.info("Separating harmonic and percussive components")
+    y_harm, y_perc = librosa.effects.hpss(y)
+
+    frame_length = 2048
+    hop_length = 512
+    logger.info("Computing RMS energies")
+    harm_rms = librosa.feature.rms(y=y_harm, frame_length=frame_length, hop_length=hop_length)[0]
+    perc_rms = librosa.feature.rms(y=y_perc, frame_length=frame_length, hop_length=hop_length)[0]
+
+    ratio = perc_rms / (harm_rms + 1e-10)
+    mask = ratio > threshold
+
+    segments: List[Tuple[float, float]] = []
+    start_time: Optional[float] = None
+    for idx, is_music in enumerate(mask):
+        time = librosa.frames_to_time(idx, sr=sr, hop_length=hop_length)
+        if is_music and start_time is None:
+            start_time = time
+        elif not is_music and start_time is not None:
+            segments.append((start_time, time))
+            start_time = None
+
+    if start_time is not None:
+        end_time = librosa.frames_to_time(len(mask), sr=sr, hop_length=hop_length)
+        segments.append((start_time, end_time))
+
+    logger.info("Detected %s music segments", len(segments))
+    with open("music_segments.json", "w", encoding="utf-8") as fh:
+        json.dump(segments, fh)
+    return segments
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -212,6 +272,19 @@ if __name__ == "__main__":
         help="Noise reduction aggressiveness between 0 and 1",
     )
 
+    music_parser = subparsers.add_parser(
+        "music", help="Detect music segments in an audio file"
+    )
+    music_parser.add_argument("audio_path", help="Path to the input audio file")
+    music_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Percussive to harmonic ratio threshold",
+    )
+
     args = parser.parse_args()
     if args.command == "denoise":
         denoise_audio(args.audio_path, args.output, aggressiveness=args.aggressiveness)
+    elif args.command == "music":
+        detect_music_segments(args.audio_path, threshold=args.threshold)

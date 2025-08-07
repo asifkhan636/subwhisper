@@ -22,3 +22,5 @@ dependencies:
       - rich             # pretty logging in the terminal
       - pyyaml
       - language_tool_python
+      - jiwer>=3.0
+      - aeneas>=1.7.3

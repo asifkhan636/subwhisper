@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import subprocess
 from typing import List, Optional, Tuple
 import shutil
@@ -25,6 +26,9 @@ def find_english_track(video_path: str) -> int:
         Index of the audio track marked as English. Defaults to ``0`` when an
         English track cannot be determined.
     """
+    if shutil.which("ffprobe") is None:  # pragma: no cover - environment check
+        logger.error("ffprobe not found; please install FFmpeg")
+        raise RuntimeError("ffprobe missing")
     cmd = [
         "ffprobe",
         "-v",
@@ -61,6 +65,8 @@ def find_english_track(video_path: str) -> int:
             logger.warning("ffprobe reported no audio streams; defaulting to 0")
     except subprocess.CalledProcessError as exc:
         logger.error("ffprobe failed: %s", exc.stderr.strip())
+    except FileNotFoundError:
+        logger.error("ffprobe not found; ensure FFmpeg is installed")
     except json.JSONDecodeError:
         logger.error("Could not parse ffprobe output")
     return 0
@@ -92,6 +98,9 @@ def extract_audio(
         stream_index,
         output_path,
     )
+    if shutil.which("ffmpeg") is None:  # pragma: no cover - environment check
+        logger.error("ffmpeg not found; please install FFmpeg")
+        raise RuntimeError("ffmpeg missing")
     cmd = [
         "ffmpeg",
         "-y",
@@ -114,6 +123,9 @@ def extract_audio(
         err = exc.stderr.decode() if hasattr(exc.stderr, "decode") else str(exc)
         logger.error("ffmpeg failed: %s", err.strip())
         raise RuntimeError("ffmpeg audio extraction failed") from exc
+    except FileNotFoundError:
+        logger.error("ffmpeg not found; ensure it is installed and on PATH")
+        raise RuntimeError("ffmpeg missing")
     return output_path
 
 
@@ -171,6 +183,9 @@ def normalize_audio(input_wav: str, output_wav: str, enabled: bool = True) -> st
             raise RuntimeError("audio copy failed") from exc
         return output_wav
 
+    if shutil.which("ffmpeg") is None:  # pragma: no cover - environment check
+        logger.error("ffmpeg not found; please install FFmpeg")
+        raise RuntimeError("ffmpeg missing")
     logger.info("Normalizing audio %s to %s", input_wav, output_wav)
     cmd = [
         "ffmpeg",
@@ -188,6 +203,9 @@ def normalize_audio(input_wav: str, output_wav: str, enabled: bool = True) -> st
         err = exc.stderr.decode() if hasattr(exc.stderr, "decode") else str(exc)
         logger.error("ffmpeg normalization failed: %s", err.strip())
         raise RuntimeError("ffmpeg audio normalization failed") from exc
+    except FileNotFoundError:
+        logger.error("ffmpeg not found; ensure it is installed and on PATH")
+        raise RuntimeError("ffmpeg missing")
     return output_wav
 
 
@@ -250,41 +268,108 @@ def detect_music_segments(audio_path: str, threshold: float = 0.5) -> List[Tuple
     return segments
 
 
-if __name__ == "__main__":
+def preprocess_pipeline(
+    input_path: str,
+    outdir: str,
+    track_index: Optional[int] = None,
+    denoise: bool = False,
+    normalize: bool = False,
+    music_threshold: float = 0.5,
+) -> Tuple[str, List[Tuple[float, float]]]:
+    """Run the full preprocessing pipeline.
+
+    Parameters
+    ----------
+    input_path: str
+        Source media file to process.
+    outdir: str
+        Directory where intermediate and output files are written.
+    track_index: int | None, optional
+        Specific audio track to use. When ``None``, the English track is
+        auto-detected.
+    denoise: bool, optional
+        Apply noise reduction when ``True``.
+    normalize: bool, optional
+        Apply loudness normalization when ``True``.
+    music_threshold: float, optional
+        Threshold passed to :func:`detect_music_segments`.
+
+    Returns
+    -------
+    tuple
+        A ``(audio_path, segments)`` pair with the final audio file and list of
+        music segments.
+    """
+
+    if not os.path.isfile(input_path):
+        logger.error("Input file does not exist: %s", input_path)
+        raise FileNotFoundError(input_path)
+
+    os.makedirs(outdir, exist_ok=True)
+
+    track = track_index if track_index is not None else find_english_track(input_path)
+    raw_audio = os.path.join(outdir, "audio.wav")
+    audio_path = extract_audio(input_path, raw_audio, track)
+
+    if denoise:
+        denoised = os.path.join(outdir, "denoised.wav")
+        audio_path = denoise_audio(audio_path, denoised)
+
+    if normalize:
+        normalized = os.path.join(outdir, "normalized.wav")
+        audio_path = normalize_audio(audio_path, normalized, enabled=True)
+
+    segments = detect_music_segments(audio_path, threshold=music_threshold)
+
+    return audio_path, segments
+
+
+def main() -> None:
+    """Entry point for command-line execution."""
     import argparse
 
     logging.basicConfig(level=logging.INFO)
 
-    parser = argparse.ArgumentParser(description="Audio preprocessing utilities")
-    subparsers = parser.add_subparsers(dest="command")
-
-    denoise_parser = subparsers.add_parser("denoise", help="Apply noise reduction to an audio file")
-    denoise_parser.add_argument("audio_path", help="Path to the input audio file")
-    denoise_parser.add_argument(
-        "--output",
-        default="denoised.wav",
-        help="Destination path for the denoised WAV",
+    parser = argparse.ArgumentParser(description="Preprocess audio for SubWhisper")
+    parser.add_argument("--input", required=True, help="Input media file")
+    parser.add_argument(
+        "--track",
+        type=int,
+        help="Audio track index to extract; auto-detect English when omitted",
     )
-    denoise_parser.add_argument(
-        "--aggressiveness",
-        type=float,
-        default=0.85,
-        help="Noise reduction aggressiveness between 0 and 1",
+    parser.add_argument(
+        "--denoise", action="store_true", help="Apply noise reduction"
     )
-
-    music_parser = subparsers.add_parser(
-        "music", help="Detect music segments in an audio file"
+    parser.add_argument(
+        "--normalize", action="store_true", help="Apply loudness normalization"
     )
-    music_parser.add_argument("audio_path", help="Path to the input audio file")
-    music_parser.add_argument(
-        "--threshold",
+    parser.add_argument(
+        "--music-threshold",
         type=float,
         default=0.5,
-        help="Percussive to harmonic ratio threshold",
+        help="Threshold for music detection",
+    )
+    parser.add_argument(
+        "--outdir",
+        default="preproc",
+        help="Directory to place processed outputs",
     )
 
     args = parser.parse_args()
-    if args.command == "denoise":
-        denoise_audio(args.audio_path, args.output, aggressiveness=args.aggressiveness)
-    elif args.command == "music":
-        detect_music_segments(args.audio_path, threshold=args.threshold)
+
+    try:
+        preprocess_pipeline(
+            input_path=args.input,
+            outdir=args.outdir,
+            track_index=args.track,
+            denoise=args.denoise,
+            normalize=args.normalize,
+            music_threshold=args.music_threshold,
+        )
+    except Exception as exc:  # pragma: no cover - CLI
+        logger.error("%s", exc)
+        raise SystemExit(1) from exc
+
+
+if __name__ == "__main__":
+    main()

@@ -8,5 +8,6 @@ librosa>=0.10
 noisereduce>=3.0
 packaging
 rich
+jiwer
 pyyaml
 language_tool_python

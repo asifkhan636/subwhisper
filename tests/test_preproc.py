@@ -82,6 +82,30 @@ def test_denoise_audio_passes_aggressiveness(monkeypatch, tmp_path):
     write_mock.assert_called_once_with(str(output_wav), data, rate)
 
 
+def test_preprocess_pipeline_forwards_aggressiveness(monkeypatch, tmp_path):
+    monkeypatch.setattr(preproc.os.path, "isfile", lambda p: True)
+    monkeypatch.setattr(preproc.os, "makedirs", lambda *a, **k: None)
+    monkeypatch.setattr(preproc, "find_english_track", lambda p: 0)
+
+    extract_mock = MagicMock(return_value=str(tmp_path / "audio.wav"))
+    monkeypatch.setattr(preproc, "extract_audio", extract_mock)
+
+    denoise_mock = MagicMock(return_value=str(tmp_path / "den.wav"))
+    monkeypatch.setattr(preproc, "denoise_audio", denoise_mock)
+
+    detect_mock = MagicMock(return_value=[])
+    monkeypatch.setattr(preproc, "detect_music_segments", detect_mock)
+
+    preproc.preprocess_pipeline(
+        input_path="in.mp4",
+        outdir=str(tmp_path),
+        denoise=True,
+        denoise_aggressiveness=0.9,
+    )
+
+    assert denoise_mock.call_args.kwargs["aggressiveness"] == 0.9
+
+
 def test_normalize_audio_copy_when_disabled(monkeypatch, tmp_path):
     copy_mock = MagicMock()
     monkeypatch.setattr(preproc.shutil, "copyfile", copy_mock)

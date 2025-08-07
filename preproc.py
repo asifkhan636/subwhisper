@@ -288,6 +288,7 @@ def preprocess_pipeline(
     outdir: str,
     track_index: Optional[int] = None,
     denoise: bool = False,
+    denoise_aggressiveness: float = 0.85,
     normalize: bool = False,
     music_threshold: float = 0.5,
 ) -> Tuple[str, List[Tuple[float, float]]]:
@@ -304,6 +305,8 @@ def preprocess_pipeline(
         auto-detected.
     denoise: bool, optional
         Apply noise reduction when ``True``.
+    denoise_aggressiveness: float, optional
+        Strength for noise reduction passed to :func:`denoise_audio`.
     normalize: bool, optional
         Apply loudness normalization when ``True``.
     music_threshold: float, optional
@@ -328,7 +331,9 @@ def preprocess_pipeline(
 
     if denoise:
         denoised = os.path.join(outdir, "denoised.wav")
-        audio_path = denoise_audio(audio_path, denoised)
+        audio_path = denoise_audio(
+            audio_path, denoised, aggressiveness=denoise_aggressiveness
+        )
 
     if normalize:
         normalized = os.path.join(outdir, "normalized.wav")
@@ -354,6 +359,12 @@ def main() -> None:
         "--denoise", action="store_true", help="Apply noise reduction"
     )
     parser.add_argument(
+        "--denoise-aggressive",
+        type=float,
+        default=0.85,
+        help="Aggressiveness of noise reduction",
+    )
+    parser.add_argument(
         "--normalize", action="store_true", help="Apply loudness normalization"
     )
     parser.add_argument(
@@ -376,6 +387,7 @@ def main() -> None:
             outdir=args.outdir,
             track_index=args.track,
             denoise=args.denoise,
+            denoise_aggressiveness=args.denoise_aggressive,
             normalize=args.normalize,
             music_threshold=args.music_threshold,
         )

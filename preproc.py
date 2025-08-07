@@ -214,20 +214,24 @@ def normalize_audio(input_wav: str, output_wav: str, enabled: bool = True) -> st
     return output_wav
 
 
-def detect_music_segments(audio_path: str, threshold: float = 0.5) -> List[Tuple[float, float]]:
+def detect_music_segments(
+    audio_path: str, output_path: str, threshold: float = 0.5
+) -> List[Tuple[float, float]]:
     """Detect likely music segments within an audio file.
 
     The function separates the harmonic and percussive components of the
     waveform using :func:`librosa.effects.hpss`. It then computes the
     percussive-to-harmonic energy ratio over short windows and returns the
     start and end times of intervals whose ratio exceeds ``threshold``. All
-    detected segments are also written to ``music_segments.json`` in the
-    current working directory.
+    detected segments are also written as ``music_segments.json`` inside
+    ``output_path``.
 
     Parameters
     ----------
     audio_path: str
         Path to the input audio file.
+    output_path: str
+        Directory where ``music_segments.json`` will be written.
     threshold: float, optional
         Minimum percussive-to-harmonic energy ratio to qualify as a music
         segment. Defaults to ``0.5``.
@@ -275,7 +279,8 @@ def detect_music_segments(audio_path: str, threshold: float = 0.5) -> List[Tuple
             segments.append((start_time, end_time))
 
         logger.info("Detected %s music segments", len(segments))
-        with open("music_segments.json", "w", encoding="utf-8") as fh:
+        segments_file = os.path.join(output_path, "music_segments.json")
+        with open(segments_file, "w", encoding="utf-8") as fh:
             json.dump(segments, fh)
         return segments
     except Exception as exc:  # pragma: no cover - defensive
@@ -294,6 +299,9 @@ def preprocess_pipeline(
 ) -> Tuple[str, List[Tuple[float, float]]]:
     """Run the full preprocessing pipeline.
 
+    All intermediate files and the resulting ``music_segments.json`` are written
+    to ``outdir``.
+
     Parameters
     ----------
     input_path: str
@@ -310,7 +318,8 @@ def preprocess_pipeline(
     normalize: bool, optional
         Apply loudness normalization when ``True``.
     music_threshold: float, optional
-        Threshold passed to :func:`detect_music_segments`.
+        Threshold passed to :func:`detect_music_segments`. Detected segments are
+        saved to ``music_segments.json`` inside ``outdir``.
 
     Returns
     -------
@@ -339,7 +348,7 @@ def preprocess_pipeline(
         normalized = os.path.join(outdir, "normalized.wav")
         audio_path = normalize_audio(audio_path, normalized, enabled=True)
 
-    segments = detect_music_segments(audio_path, threshold=music_threshold)
+    segments = detect_music_segments(audio_path, outdir, threshold=music_threshold)
 
     return audio_path, segments
 
@@ -376,7 +385,7 @@ def main() -> None:
     parser.add_argument(
         "--outdir",
         default="preproc",
-        help="Directory to place processed outputs",
+        help="Directory to place processed outputs, including music segments",
     )
 
     args = parser.parse_args()

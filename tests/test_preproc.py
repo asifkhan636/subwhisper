@@ -104,6 +104,8 @@ def test_preprocess_pipeline_forwards_aggressiveness(monkeypatch, tmp_path):
     )
 
     assert denoise_mock.call_args.kwargs["aggressiveness"] == 0.9
+    detect_mock.assert_called_once()
+    assert detect_mock.call_args.args[1] == str(tmp_path)
 
 
 def test_normalize_audio_copy_when_disabled(monkeypatch, tmp_path):
@@ -141,8 +143,6 @@ def test_normalize_audio_invokes_ffmpeg_when_enabled(monkeypatch, tmp_path):
     ],
 )
 def test_detect_music_segments_threshold(monkeypatch, tmp_path, threshold, expected):
-    monkeypatch.chdir(tmp_path)
-
     monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(4), 22050))
     monkeypatch.setattr(
         preproc.librosa.effects,
@@ -157,8 +157,8 @@ def test_detect_music_segments_threshold(monkeypatch, tmp_path, threshold, expec
         preproc.librosa, "frames_to_time", lambda idx, sr, hop_length: float(idx)
     )
 
-    segments = preproc.detect_music_segments("dummy.wav", threshold)
+    segments = preproc.detect_music_segments("dummy.wav", str(tmp_path), threshold)
 
     assert segments == expected
-    # Ensure JSON file was written
+    # Ensure JSON file was written in provided directory
     assert (tmp_path / "music_segments.json").is_file()

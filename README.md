@@ -81,10 +81,12 @@ warnings.
 from the input video and optionally cleaning it up. The pipeline can:
 
 1. Extract the selected audio stream into `audio.wav`.
-2. Apply noise reduction to produce `denoised.wav` when `--denoise` is used.
+2. Apply noise reduction to produce `denoised.wav` when `--denoise` is used;
+   control the strength with `--denoise-aggressive`.
 3. Apply loudness normalization to produce `normalized.wav` when `--normalize`
    is set.
-4. Detect music and write `[start, end]` time ranges to `music_segments.json`.
+4. Detect music and write `[start, end]` time ranges to `music_segments.json` in
+   the output directory.
 
 All files are written under the directory given by `--outdir` (default:
 `preproc/`).
@@ -94,7 +96,8 @@ All files are written under the directory given by `--outdir` (default:
 Run the complete preprocessing pipeline:
 
 ```bash
-python preproc.py --input video.mp4 --denoise --normalize --outdir preproc
+python preproc.py --input video.mp4 --denoise --denoise-aggressive 0.9 \
+    --normalize --outdir preproc
 ```
 
 Additional options:
@@ -102,13 +105,16 @@ Additional options:
 - `--track N` – process a specific audio stream.
 - `--music-threshold T` – adjust the music detection threshold (default
   `0.5`).
+- `--denoise-aggressive A` – set noise reduction aggressiveness from 0 to 1
+  (default `0.85`); used with `--denoise`.
 
 ### Output files
 
 - `audio.wav` – raw extracted audio.
 - `denoised.wav` – noise‑reduced audio when `--denoise` is used.
 - `normalized.wav` – loudness‑normalized audio when `--normalize` is used.
-- `music_segments.json` – JSON array of detected music segments in seconds.
+- `music_segments.json` – JSON array of detected music segments in seconds,
+  saved under the `--outdir` directory.
 
 ## Usage
 

@@ -25,6 +25,7 @@ def transcribe_and_align(
     batch_size: int = 8,
     beam_size: int = 5,
     music_segments: Optional[List[Tuple[float, float]]] = None,
+    skip_music: bool = False,
 ) -> str:
     """Transcribe ``audio_path`` and align words with WhisperX.
 
@@ -43,7 +44,10 @@ def transcribe_and_align(
     beam_size:
         Beam size for decoder during transcription.
     music_segments:
-        Optional ``(start, end)`` pairs marking regions to exclude.
+        Optional ``(start, end)`` pairs marking regions containing music.
+    skip_music:
+        When ``True`` segments overlapping ``music_segments`` are removed
+        entirely. Otherwise they are kept with ``is_music`` set to ``True``.
 
     Returns
     -------
@@ -62,21 +66,88 @@ def transcribe_and_align(
     align_model, metadata = whisperx.load_align_model(
         model_name="WAV2VEC2_ASR_LARGE_LV60K_960H", language_code="en"
     )
-    aligned = whisperx.align(
-        result["segments"], align_model, metadata, audio, batch_size=batch_size
-    )
 
-    segments = aligned["segments"]
-    if music_segments:
-        segments = [
-            seg
-            for seg in segments
-            if not _overlaps(seg["start"], seg["end"], music_segments)
-        ]
+    segments = result["segments"]
+    processed: List[dict] = []
+    to_align: List[dict] = []
+    for seg in segments:
+        is_music = bool(music_segments) and _overlaps(
+            seg["start"], seg["end"], music_segments
+        )
+        if is_music and skip_music:
+            continue
+        seg["is_music"] = is_music
+        processed.append(seg)
+        if not is_music:
+            to_align.append(seg)
+
+    aligned_segments: List[dict] = []
+    if to_align:
+        aligned_result = whisperx.align(
+            to_align, align_model, metadata, audio, batch_size=batch_size
+        )
+        aligned_segments = aligned_result["segments"]
+
+    final_segments: List[dict] = []
+    aligned_iter = iter(aligned_segments)
+    for seg in processed:
+        if seg["is_music"]:
+            final_segments.append(seg)
+        else:
+            aligned_seg = next(aligned_iter)
+            aligned_seg["is_music"] = False
+            final_segments.append(aligned_seg)
 
     os.makedirs(outdir, exist_ok=True)
     output_path = os.path.join(outdir, "transcript.json")
     with open(output_path, "w", encoding="utf-8") as fh:
-        json.dump({"segments": segments}, fh, ensure_ascii=False, indent=2)
+        json.dump({"segments": final_segments}, fh, ensure_ascii=False, indent=2)
 
     return output_path
+
+
+def main() -> None:
+    """Command-line interface for ``transcribe_and_align``."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Transcribe audio and align words using WhisperX."
+    )
+    parser.add_argument("audio_path", help="Path to the audio file")
+    parser.add_argument("outdir", help="Directory for the resulting JSON file")
+    parser.add_argument("--model", default="large-v2", help="Whisper model name")
+    parser.add_argument(
+        "--compute-type", default="float32", help="Precision for WhisperX"
+    )
+    parser.add_argument("--batch-size", type=int, default=8, help="Batch size")
+    parser.add_argument("--beam-size", type=int, default=5, help="Beam size")
+    parser.add_argument(
+        "--music-segments",
+        help="JSON file containing a list of [start, end] music ranges",
+    )
+    parser.add_argument(
+        "--skip-music",
+        action="store_true",
+        help="Drop segments overlapping music ranges",
+    )
+    args = parser.parse_args()
+
+    music_ranges = None
+    if args.music_segments:
+        with open(args.music_segments, "r", encoding="utf-8") as fh:
+            music_ranges = json.load(fh)
+
+    transcribe_and_align(
+        args.audio_path,
+        args.outdir,
+        model=args.model,
+        compute_type=args.compute_type,
+        batch_size=args.batch_size,
+        beam_size=args.beam_size,
+        music_segments=music_ranges,
+        skip_music=args.skip_music,
+    )
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
+    main()

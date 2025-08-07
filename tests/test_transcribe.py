@@ -29,6 +29,74 @@ def _setup_stub(align_func):
     stub.align = align_func
 
 
+def test_forwards_options(tmp_path):
+    """``transcribe_and_align`` forwards core whisperx options."""
+
+    calls = {}
+
+    class DummyModel:
+        def transcribe(self, audio, batch_size, beam_size, language):  # noqa: D401
+            calls["transcribe"] = {
+                "batch_size": batch_size,
+                "beam_size": beam_size,
+                "language": language,
+            }
+            return {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello"}]}
+
+    def load_model(model, language, compute_type, batch_size):
+        calls["load_model"] = {
+            "language": language,
+            "compute_type": compute_type,
+            "batch_size": batch_size,
+        }
+        return DummyModel()
+
+    def load_align_model(model_name, language_code):
+        calls["load_align_model"] = {
+            "model_name": model_name,
+            "language_code": language_code,
+        }
+        return ("align", "meta")
+
+    def align(segs, align_model, metadata, audio, batch_size):
+        calls["align"] = {"batch_size": batch_size}
+        seg = segs[0].copy()
+        seg["words"] = [{"start": 0.0, "end": 1.0, "word": "Hello"}]
+        return {"segments": [seg]}
+
+    stub.load_model = load_model
+    stub.load_audio = lambda path: "audio"
+    stub.load_align_model = load_align_model
+    stub.align = align
+
+    outpath = transcribe.transcribe_and_align(
+        "dummy.wav",
+        str(tmp_path),
+        model="tiny",
+        compute_type="float16",
+        batch_size=4,
+        beam_size=2,
+    )
+
+    assert calls["load_model"] == {
+        "language": "en",
+        "compute_type": "float16",
+        "batch_size": 4,
+    }
+    assert calls["transcribe"] == {
+        "batch_size": 4,
+        "beam_size": 2,
+        "language": "en",
+    }
+    assert calls["load_align_model"] == {
+        "model_name": transcribe.ALIGN_MODEL_NAME,
+        "language_code": "en",
+    }
+    assert calls["align"] == {"batch_size": 4}
+    assert json.loads(tmp_path.joinpath("segments.json").read_text())[0]["words"][0]["word"] == "Hello"
+    assert outpath == str(tmp_path / "segments.json")
+
+
 def test_mark_music(tmp_path):
     """Segments overlapping music are marked when not skipped."""
 

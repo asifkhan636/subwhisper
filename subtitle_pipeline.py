@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 import pysubs2
 import textwrap
+from format_subtitles import apply_corrections, load_corrections
 
 
 def load_segments(path: Path) -> pysubs2.SSAFile:
@@ -147,3 +148,123 @@ def write_outputs(
     if out_txt is not None:
         lines = [ev.plaintext for ev in subs.events]
         out_txt.write_text("\n".join(lines), encoding="utf-8")
+
+
+def main() -> None:  # pragma: no cover - CLI entry point
+    """Command-line interface for the subtitle pipeline."""
+
+    import argparse
+    import logging
+
+    parser = argparse.ArgumentParser(
+        description="Format Whisper segments into subtitle files",
+    )
+    parser.add_argument("--segments", help="Path to segments.json file")
+    parser.add_argument(
+        "--transcript",
+        action="store_true",
+        help="Also write a plain text transcript next to the SRT output",
+    )
+    parser.add_argument(
+        "--corrections",
+        help="JSON or YAML file with text correction rules",
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        help="Output SRT file (or directory when using --batch-dir)",
+    )
+    parser.add_argument(
+        "--max-chars",
+        type=int,
+        default=42,
+        help="Maximum characters per line",
+    )
+    parser.add_argument(
+        "--max-lines",
+        type=int,
+        default=2,
+        help="Maximum number of lines per event",
+    )
+    parser.add_argument(
+        "--max-duration",
+        type=float,
+        default=6.0,
+        help="Maximum duration for an event in seconds",
+    )
+    parser.add_argument(
+        "--min-gap",
+        type=float,
+        default=0.0,
+        help="Minimum gap between events in seconds",
+    )
+    parser.add_argument(
+        "--skip-music",
+        action="store_true",
+        help="Skip segments marked as music",
+    )
+    parser.add_argument(
+        "--spellcheck",
+        action="store_true",
+        help="Run LanguageTool spell check on output",
+    )
+    parser.add_argument(
+        "--batch-dir",
+        help="Process all segments.json files under this directory",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging",
+    )
+
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format="%(levelname)s: %(message)s",
+    )
+
+    rules = load_corrections(Path(args.corrections)) if args.corrections else None
+
+    def process_file(seg_path: Path, out_srt: Path) -> None:
+        with seg_path.open("r", encoding="utf-8") as f:
+            data: Any = json.load(f)
+        if isinstance(data, dict) and "segments" in data:
+            data = data["segments"]
+        if args.skip_music:
+            data = [s for s in data if not s.get("is_music")]
+        subs = pysubs2.load_from_whisper(data)
+        if rules:
+            for ev in subs.events:
+                fixed = apply_corrections(ev.plaintext, rules)
+                ev.text = fixed.replace("\n", "\\N")
+        enforce_limits(
+            subs,
+            max_chars=args.max_chars,
+            max_lines=args.max_lines,
+            max_duration=args.max_duration,
+            min_gap=args.min_gap,
+        )
+        if args.spellcheck:
+            spellcheck_lines(subs)
+        out_txt = out_srt.with_suffix(".txt") if args.transcript else None
+        write_outputs(subs, out_srt, out_txt)
+
+    if args.batch_dir:
+        batch_root = Path(args.batch_dir)
+        out_root = Path(args.output)
+        for seg_file in batch_root.rglob("segments.json"):
+            rel = seg_file.relative_to(batch_root)
+            dest_dir = out_root / rel.parent
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            out_srt = dest_dir / (seg_file.stem + ".srt")
+            process_file(seg_file, out_srt)
+    else:
+        if not args.segments:
+            parser.error("--segments is required unless --batch-dir is used")
+        process_file(Path(args.segments), Path(args.output))
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
+    main()

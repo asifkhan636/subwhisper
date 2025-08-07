@@ -116,6 +116,64 @@ Additional options:
 - `music_segments.json` – JSON array of detected music segments in seconds,
   saved under the `--outdir` directory.
 
+## Phase-2: Transcription & Alignment
+
+`transcribe.py` converts the cleaned audio from Phase 1 into time-aligned
+segments using WhisperX.
+
+### CLI usage
+
+```bash
+python transcribe.py preproc/normalized.wav --outdir transcript \
+    --music-segments preproc/music_segments.json
+```
+
+#### Options
+
+- `audio_path` – path to the mono 16 kHz WAV produced by Phase 1 (for example,
+  `preproc/normalized.wav`).
+- `--outdir DIR` – directory where `transcript.json` and `segments.json` are
+  written.
+- `--model NAME` – Whisper model to load (default `large-v2`).
+- `--batch-size N` – batch size for both transcription and alignment
+  (default `8`).
+- `--beam-size N` – beam search width used during decoding (default `5`).
+- `--compute-type TYPE` – precision for WhisperX such as `float16` or
+  `float32` (default `float32`).
+- `--music-segments FILE` – optional JSON file with `[start, end]` pairs from
+  Phase 1 to flag music regions.
+
+### Output files
+
+- `transcript.json` – raw WhisperX segments with an additional `is_music`
+  boolean.
+- `segments.json` – simplified segments used by downstream tooling:
+
+  ```json
+  [
+    {
+      "start": 0.0,
+      "end": 3.2,
+      "text": "hello world",
+      "words": [
+        {"word": "hello", "start": 0.0, "end": 1.2},
+        {"word": "world", "start": 1.3, "end": 3.2}
+      ]
+    }
+  ]
+  ```
+
+### Full Phase 1 → Phase 2 example
+
+```bash
+# Phase 1: extract, clean, and detect music
+python preproc.py --input video.mp4 --denoise --normalize --outdir preproc
+
+# Phase 2: transcribe and align using the cleaned audio and music ranges
+python transcribe.py preproc/normalized.wav --outdir transcript \
+    --music-segments preproc/music_segments.json
+```
+
 ## Usage
 
 Activate the `subwhisper` conda environment before running any commands.

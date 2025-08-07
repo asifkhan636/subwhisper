@@ -109,35 +109,43 @@ def transcribe_and_align(
 def main() -> None:
     """Command-line interface for ``transcribe_and_align``."""
     import argparse
+    import logging
 
     parser = argparse.ArgumentParser(
         description="Transcribe audio and align words using WhisperX."
     )
     parser.add_argument("audio_path", help="Path to the audio file")
-    parser.add_argument("outdir", help="Directory for the resulting JSON file")
+    parser.add_argument(
+        "--outdir", required=True, help="Directory for the resulting JSON file"
+    )
     parser.add_argument("--model", default="large-v2", help="Whisper model name")
+    parser.add_argument(
+        "--batch-size", type=int, default=8, help="Batch size for processing"
+    )
+    parser.add_argument("--beam-size", type=int, default=5, help="Beam size")
     parser.add_argument(
         "--compute-type", default="float32", help="Precision for WhisperX"
     )
-    parser.add_argument("--batch-size", type=int, default=8, help="Batch size")
-    parser.add_argument("--beam-size", type=int, default=5, help="Beam size")
     parser.add_argument(
         "--music-segments",
         help="JSON file containing a list of [start, end] music ranges",
     )
-    parser.add_argument(
-        "--skip-music",
-        action="store_true",
-        help="Drop segments overlapping music ranges",
-    )
     args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logging.info("Model: %s", args.model)
+    logging.info("Batch size: %d", args.batch_size)
+    logging.info("Beam size: %d", args.beam_size)
+    logging.info("Compute type: %s", args.compute_type)
+    logging.info("Output directory: %s", args.outdir)
+    logging.info("Music segments: %s", args.music_segments or "None")
 
     music_ranges = None
     if args.music_segments:
         with open(args.music_segments, "r", encoding="utf-8") as fh:
             music_ranges = json.load(fh)
 
-    transcribe_and_align(
+    outpath = transcribe_and_align(
         args.audio_path,
         args.outdir,
         model=args.model,
@@ -145,8 +153,8 @@ def main() -> None:
         batch_size=args.batch_size,
         beam_size=args.beam_size,
         music_segments=music_ranges,
-        skip_music=args.skip_music,
     )
+    print(outpath)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entry point

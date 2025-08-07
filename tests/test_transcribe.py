@@ -76,3 +76,48 @@ def test_skip_music(tmp_path):
     assert data["segments"][0]["is_music"] is False
     assert data["segments"][0]["text"] == "World"
 
+
+def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
+    """Command-line interface passes arguments and prints the output path."""
+
+    def fake_transcribe(audio_path, outdir, **kwargs):
+        assert audio_path == "foo.wav"
+        assert outdir == str(tmp_path)
+        assert kwargs["model"] == "tiny"
+        assert kwargs["batch_size"] == 4
+        assert kwargs["beam_size"] == 2
+        assert kwargs["compute_type"] == "float16"
+        assert kwargs["music_segments"] == [[0.0, 1.0]]
+        return str(tmp_path / "transcript.json")
+
+    monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
+
+    music_file = tmp_path / "music.json"
+    music_file.write_text("[[0.0, 1.0]]")
+
+    argv = [
+        "transcribe.py",
+        "foo.wav",
+        "--outdir",
+        str(tmp_path),
+        "--model",
+        "tiny",
+        "--batch-size",
+        "4",
+        "--beam-size",
+        "2",
+        "--compute-type",
+        "float16",
+        "--music-segments",
+        str(music_file),
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with caplog.at_level("INFO"):
+        transcribe.main()
+    captured = capsys.readouterr()
+
+    assert str(tmp_path / "transcript.json") in captured.out
+    assert "Model: tiny" in caplog.text
+    assert "Batch size: 4" in caplog.text
+

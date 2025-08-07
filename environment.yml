@@ -16,6 +16,7 @@ dependencies:
       - speechbrain>=1.0
       - whisperx>=3.4.2,<4
       - librosa>=0.10
+      - noisereduce>=3.0
       - packaging        # version parsing for dependency checks
       # Optional extras
       - rich             # pretty logging in the terminal

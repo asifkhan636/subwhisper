@@ -26,7 +26,7 @@ transcription.
 - **Python**: 3.9 or newer
 - **Conda**: for managing the environment
 - **FFmpeg**: used for audio extraction
-- **Python packages**: `torch>=2.5`, `pyannote.audio>=3.3`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`
+- **Python packages**: `torch>=2.5`, `pyannote.audio>=3.3`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, `librosa>=0.10`, `noisereduce>=3.0`
 
 ### Create a Conda Environment
 
@@ -74,6 +74,41 @@ python -m pytorch_lightning.utilities.upgrade_checkpoint /path/to/pytorch_model.
 
 This converts the checkpoint to the latest format so it can be loaded without
 warnings.
+
+## Phase-1: Audio Preprocessing
+
+`preproc.py` prepares audio for transcription by extracting a mono 16 kHz track
+from the input video and optionally cleaning it up. The pipeline can:
+
+1. Extract the selected audio stream into `audio.wav`.
+2. Apply noise reduction to produce `denoised.wav` when `--denoise` is used.
+3. Apply loudness normalization to produce `normalized.wav` when `--normalize`
+   is set.
+4. Detect music and write `[start, end]` time ranges to `music_segments.json`.
+
+All files are written under the directory given by `--outdir` (default:
+`preproc/`).
+
+### CLI usage
+
+Run the complete preprocessing pipeline:
+
+```bash
+python preproc.py --input video.mp4 --denoise --normalize --outdir preproc
+```
+
+Additional options:
+
+- `--track N` – process a specific audio stream.
+- `--music-threshold T` – adjust the music detection threshold (default
+  `0.5`).
+
+### Output files
+
+- `audio.wav` – raw extracted audio.
+- `denoised.wav` – noise‑reduced audio when `--denoise` is used.
+- `normalized.wav` – loudness‑normalized audio when `--normalize` is used.
+- `music_segments.json` – JSON array of detected music segments in seconds.
 
 ## Usage
 

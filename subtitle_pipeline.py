@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 import pysubs2
 import textwrap
-from format_subtitles import apply_corrections, load_corrections
+from corrections import apply_corrections, load_corrections
 
 
 logger = logging.getLogger(__name__)

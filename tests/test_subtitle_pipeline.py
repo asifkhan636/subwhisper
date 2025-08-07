@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from subtitle_pipeline import load_segments, enforce_limits
-from format_subtitles import load_corrections, apply_corrections
+from corrections import load_corrections, apply_corrections
 
 # Stub for language_tool_python to avoid external dependency
 lt_stub = types.ModuleType("language_tool_python")

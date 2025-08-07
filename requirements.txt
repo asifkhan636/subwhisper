@@ -9,3 +9,4 @@ noisereduce>=3.0
 packaging
 rich
 pyyaml
+language_tool_python

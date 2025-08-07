@@ -165,6 +165,7 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
         assert kwargs["beam_size"] == 2
         assert kwargs["compute_type"] == "float16"
         assert kwargs["music_segments"] == [[0.0, 1.0]]
+        assert kwargs["spellcheck"] is False
         return str(tmp_path / "segments.json")
 
     monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
@@ -197,4 +198,23 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
     assert str(tmp_path / "segments.json") in captured.out
     assert "Model: tiny" in caplog.text
     assert "Batch size: 4" in caplog.text
+
+
+def test_cli_spellcheck_flag(tmp_path, monkeypatch):
+    def fake_transcribe(audio_path, outdir, **kwargs):
+        assert kwargs["spellcheck"] is True
+        return str(tmp_path / "segments.json")
+
+    monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
+
+    argv = [
+        "transcribe.py",
+        "foo.wav",
+        "--outdir",
+        str(tmp_path),
+        "--spellcheck",
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    transcribe.main()
 

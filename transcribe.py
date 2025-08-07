@@ -45,6 +45,9 @@ import os
 from typing import List, Optional, Tuple
 
 import whisperx
+import pysubs2
+
+from subtitle_pipeline import spellcheck_lines
 
 
 ALIGN_MODEL_NAME = "WAV2VEC2_ASR_LARGE_LV60K_960H"
@@ -69,6 +72,7 @@ def transcribe_and_align(
     beam_size: int = 5,
     music_segments: Optional[List[Tuple[float, float]]] = None,
     skip_music: bool = False,
+    spellcheck: bool = False,
 ) -> str:
     """Transcribe ``audio_path`` and align words with WhisperX.
 
@@ -91,6 +95,8 @@ def transcribe_and_align(
     skip_music:
         When ``True`` segments overlapping ``music_segments`` are removed
         entirely. Otherwise they are kept with ``is_music`` set to ``True``.
+    spellcheck:
+        Run a LanguageTool spell check on the final segment texts when ``True``.
 
     Returns
     -------
@@ -179,6 +185,12 @@ def transcribe_and_align(
         for seg in final_segments
     ]
 
+    if spellcheck:
+        subs = pysubs2.load_from_whisper(simple_segments)
+        spellcheck_lines(subs)
+        for seg, ev in zip(simple_segments, subs.events):
+            seg["text"] = ev.plaintext
+
     segments_path = os.path.join(outdir, "segments.json")
     with open(segments_path, "w", encoding="utf-8") as fh:
         json.dump(simple_segments, fh, ensure_ascii=False, indent=2)
@@ -210,6 +222,11 @@ def main() -> None:
         "--music-segments",
         help="JSON file containing a list of [start, end] music ranges",
     )
+    parser.add_argument(
+        "--spellcheck",
+        action="store_true",
+        help="Run LanguageTool spell check on output (slow; requires Java)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -234,6 +251,7 @@ def main() -> None:
         batch_size=args.batch_size,
         beam_size=args.beam_size,
         music_segments=music_ranges,
+        spellcheck=args.spellcheck,
     )
     logger.info("JSON output written to %s", outpath)
     print(outpath)

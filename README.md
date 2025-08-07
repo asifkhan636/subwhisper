@@ -174,6 +174,43 @@ python transcribe.py preproc/normalized.wav --outdir transcript \
     --music-segments preproc/music_segments.json
 ```
 
+## Phase-4: Validation & Benchmarking
+
+`qc.py` provides tooling to assess subtitle quality once transcription is
+complete. It can compute word error rate (WER) against a reference
+transcript, verify subtitle timing against the original audio, and gather
+summary statistics across many files.
+
+### Computing WER
+
+```bash
+python qc.py subs/episode1.srt --reference refs/episode1.txt --wer
+```
+
+This prints the WER between `subs/episode1.srt` and the reference text. It
+requires the `jiwer` and `pysubs2` packages and outputs a floating‑point
+score in the range `0.0–1.0`.
+
+### Sync checks
+
+```bash
+python qc.py subs/episode1.srt --audio audio/episode1.wav --sync
+```
+
+The command runs a forced‑alignment check (requires `aeneas` and
+`pysubs2`) and reports offsets such as `mean_offset`, `median_offset`, and
+`max_offset` in seconds.
+
+### Batch validation
+
+```bash
+python qc.py subs/ -r refs/ -a audio/ --recursive --json qc/results.json --csv qc/results.csv
+```
+
+Processes all subtitle files under `subs/`, matching reference transcripts
+and audio by filename. Per‑file metrics are printed to the console and the
+aggregated results are written to JSON and CSV files.
+
 ## Usage
 
 Activate the `subwhisper` conda environment before running any commands.

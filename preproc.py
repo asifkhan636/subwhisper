@@ -140,7 +140,8 @@ def denoise_audio(audio_path: str, output_path: str, aggressiveness: float = 0.8
     output_path: str
         Destination path for the denoised audio WAV.
     aggressiveness: float, optional
-        Value between 0 and 1 controlling noise reduction strength.
+        Value between 0 and 1 controlling how strongly noise is reduced; higher
+        values remove more noise at the risk of artifacts. Defaults to ``0.85``.
 
     Returns
     -------
@@ -223,7 +224,7 @@ def detect_music_segments(
     waveform using :func:`librosa.effects.hpss`. It then computes the
     percussive-to-harmonic energy ratio over short windows and returns the
     start and end times of intervals whose ratio exceeds ``threshold``. All
-    detected segments are also written as ``music_segments.json`` inside
+    detected segments are also written to ``music_segments.json`` inside
     ``output_path``.
 
     Parameters
@@ -231,7 +232,8 @@ def detect_music_segments(
     audio_path: str
         Path to the input audio file.
     output_path: str
-        Directory where ``music_segments.json`` will be written.
+        Directory where ``music_segments.json`` will be written. The file is
+        created as ``<output_path>/music_segments.json``.
     threshold: float, optional
         Minimum percussive-to-harmonic energy ratio to qualify as a music
         segment. Defaults to ``0.5``.
@@ -314,7 +316,8 @@ def preprocess_pipeline(
     denoise: bool, optional
         Apply noise reduction when ``True``.
     denoise_aggressiveness: float, optional
-        Strength for noise reduction passed to :func:`denoise_audio`.
+        Strength for noise reduction passed to :func:`denoise_audio`. This value
+        ranges from 0 to 1 and is used only when ``denoise`` is ``True``.
     normalize: bool, optional
         Apply loudness normalization when ``True``.
     music_threshold: float, optional
@@ -371,7 +374,10 @@ def main() -> None:
         "--denoise-aggressive",
         type=float,
         default=0.85,
-        help="Aggressiveness of noise reduction",
+        help=(
+            "Noise reduction aggressiveness between 0 and 1 (higher removes "
+            "more noise); used with --denoise"
+        ),
     )
     parser.add_argument(
         "--normalize", action="store_true", help="Apply loudness normalization"
@@ -380,12 +386,18 @@ def main() -> None:
         "--music-threshold",
         type=float,
         default=0.5,
-        help="Threshold for music detection",
+        help=(
+            "Threshold for music detection; detected segments are saved to "
+            "music_segments.json in --outdir"
+        ),
     )
     parser.add_argument(
         "--outdir",
         default="preproc",
-        help="Directory to place processed outputs, including music segments",
+        help=(
+            "Directory for processed outputs; music_segments.json will be "
+            "written here"
+        ),
     )
 
     args = parser.parse_args()

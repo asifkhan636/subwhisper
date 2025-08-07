@@ -1,5 +1,9 @@
 """Utilities for transcribing audio with WhisperX and word-level alignment.
 
+The script expects the mono 16 kHz WAV produced by ``preproc.py`` and,
+optionally, a ``music_segments.json`` file containing ``[start, end]`` pairs
+to mark regions with background music.
+
 The transcription pipeline writes two JSON files to the output directory:
 
 ``transcript.json``
@@ -24,6 +28,13 @@ The transcription pipeline writes two JSON files to the output directory:
 
     ``words`` is empty when a segment was skipped during alignment (e.g. for
     music sections).
+
+Command line usage::
+
+    python transcribe.py cleaned.wav --outdir transcript \
+        --music-segments preproc/music_segments.json \
+        [--model large-v2] [--batch-size 8] [--beam-size 5] \
+        [--compute-type float32]
 """
 
 from __future__ import annotations

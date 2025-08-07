@@ -36,6 +36,48 @@ def _load_text(path: Path) -> str:
     raise ValueError(f"Unsupported file type: {path.suffix}")
 
 
+def collect_metrics(srt_path: str) -> Dict[str, Any]:
+    """Collect basic statistics from a subtitle file.
+
+    Parameters
+    ----------
+    srt_path:
+        Path to the ``.srt`` subtitle file.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Dictionary containing subtitle count, average duration, average
+        number of lines, and any warnings about unusual entries.
+    """
+    subs = pysubs2.load(srt_path)
+
+    durations: list[float] = []
+    line_counts: list[int] = []
+    warnings: list[str] = []
+
+    for i, event in enumerate(subs, start=1):
+        duration = (event.end - event.start) / 1000.0  # convert ms to seconds
+        durations.append(duration)
+
+        line_counts.append(len(event.plaintext.splitlines()))
+
+        if duration < 0.5:
+            warnings.append(f"subtitle {i} very short ({duration:.2f}s)")
+        if duration > 10.0:
+            warnings.append(f"subtitle {i} very long ({duration:.2f}s)")
+
+    metrics: Dict[str, Any] = {
+        "subtitle_count": len(subs),
+        "avg_duration": statistics.mean(durations) if durations else 0.0,
+        "avg_lines": statistics.mean(line_counts) if line_counts else 0.0,
+        "warnings": warnings,
+    }
+
+    logger.info("Subtitle metrics: %s", metrics)
+    return metrics
+
+
 def compute_wer(hyp_path: str, ref_path: str) -> float:
     """Compute word error rate between two files.
 

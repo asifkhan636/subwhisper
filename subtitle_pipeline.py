@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pysubs2
 import textwrap
@@ -125,3 +125,25 @@ def spellcheck_lines(subs: pysubs2.SSAFile, lang: str = "en-US") -> pysubs2.SSAF
         corrected = tool.correct(ev.plaintext)
         ev.text = corrected.replace("\n", "\\N")
     return subs
+
+
+def write_outputs(
+    subs: pysubs2.SSAFile, out_srt: Path, out_txt: Optional[Path]
+) -> None:
+    """Write subtitle collection to ``out_srt`` and optionally ``out_txt``.
+
+    Parameters
+    ----------
+    subs:
+        Subtitle collection to write.
+    out_srt:
+        Destination path for the SRT subtitle file.
+    out_txt:
+        Optional path where plain text lines are written, one per subtitle
+        event. When ``None`` the text file is skipped.
+    """
+
+    subs.save(out_srt, format_="srt")
+    if out_txt is not None:
+        lines = [ev.plaintext for ev in subs.events]
+        out_txt.write_text("\n".join(lines), encoding="utf-8")

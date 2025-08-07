@@ -29,10 +29,16 @@ The transcription pipeline writes two JSON files to the output directory:
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import List, Optional, Tuple
 
 import whisperx
+
+
+ALIGN_MODEL_NAME = "WAV2VEC2_ASR_LARGE_LV60K_960H"
+
+logger = logging.getLogger(__name__)
 
 
 def _overlaps(seg_start: float, seg_end: float, music_segments: List[Tuple[float, float]]) -> bool:
@@ -85,12 +91,21 @@ def transcribe_and_align(
     )
 
     audio = whisperx.load_audio(audio_path)
-    result = asr_model.transcribe(
-        audio, batch_size=batch_size, beam_size=beam_size, language="en"
-    )
+    try:
+        result = asr_model.transcribe(
+            audio, batch_size=batch_size, beam_size=beam_size, language="en"
+        )
+    except Exception as exc:  # pragma: no cover - depends on backend
+        logger.error("Transcription failed: %s", exc)
+        if "out of memory" in str(exc).lower():
+            logger.error(
+                "Out of memory during transcription. Try smaller batch or beam size."
+            )
+        raise
 
+    logger.info("Alignment model: %s", ALIGN_MODEL_NAME)
     align_model, metadata = whisperx.load_align_model(
-        model_name="WAV2VEC2_ASR_LARGE_LV60K_960H", language_code="en"
+        model_name=ALIGN_MODEL_NAME, language_code="en"
     )
 
     segments = result["segments"]
@@ -109,10 +124,21 @@ def transcribe_and_align(
 
     aligned_segments: List[dict] = []
     if to_align:
-        aligned_result = whisperx.align(
-            to_align, align_model, metadata, audio, batch_size=batch_size
-        )
-        aligned_segments = aligned_result["segments"]
+        try:
+            aligned_result = whisperx.align(
+                to_align, align_model, metadata, audio, batch_size=batch_size
+            )
+        except Exception as exc:  # pragma: no cover - depends on backend
+            logger.error("Alignment failed: %s", exc)
+            if "out of memory" in str(exc).lower():
+                logger.error(
+                    "Out of memory during alignment. Try smaller batch or beam size."
+                )
+            else:
+                logger.error("Consider retrying with smaller settings.")
+            raise
+        else:
+            aligned_segments = aligned_result["segments"]
 
     final_segments: List[dict] = []
     aligned_iter = iter(aligned_segments)
@@ -145,6 +171,7 @@ def transcribe_and_align(
     segments_path = os.path.join(outdir, "segments.json")
     with open(segments_path, "w", encoding="utf-8") as fh:
         json.dump(simple_segments, fh, ensure_ascii=False, indent=2)
+    logger.info("Transcription complete. JSON output at %s", segments_path)
 
     return segments_path
 
@@ -152,7 +179,6 @@ def transcribe_and_align(
 def main() -> None:
     """Command-line interface for ``transcribe_and_align``."""
     import argparse
-    import logging
 
     parser = argparse.ArgumentParser(
         description="Transcribe audio and align words using WhisperX."
@@ -176,12 +202,13 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    logging.info("Model: %s", args.model)
-    logging.info("Batch size: %d", args.batch_size)
-    logging.info("Beam size: %d", args.beam_size)
-    logging.info("Compute type: %s", args.compute_type)
-    logging.info("Output directory: %s", args.outdir)
-    logging.info("Music segments: %s", args.music_segments or "None")
+    logger.info("Model: %s", args.model)
+    logger.info("Compute type: %s", args.compute_type)
+    logger.info("Beam size: %d", args.beam_size)
+    logger.info("Batch size: %d", args.batch_size)
+    logger.info("Alignment model: %s", ALIGN_MODEL_NAME)
+    logger.info("Output directory: %s", args.outdir)
+    logger.info("Music segments: %s", args.music_segments or "None")
 
     music_ranges = None
     if args.music_segments:
@@ -197,6 +224,7 @@ def main() -> None:
         beam_size=args.beam_size,
         music_segments=music_ranges,
     )
+    logger.info("JSON output written to %s", outpath)
     print(outpath)
 
 

@@ -2,6 +2,7 @@ import json
 import logging
 import subprocess
 from typing import Optional
+import shutil
 
 import noisereduce as nr
 import soundfile as sf
@@ -139,6 +140,54 @@ def denoise_audio(audio_path: str, output_path: str, aggressiveness: float = 0.8
     logger.info("Writing denoised audio to %s", output_path)
     sf.write(output_path, reduced, rate)
     return output_path
+
+
+def normalize_audio(input_wav: str, output_wav: str, enabled: bool = True) -> str:
+    """Normalize an audio file using ``ffmpeg`` or copy when disabled.
+
+    Parameters
+    ----------
+    input_wav: str
+        Path to the source WAV file.
+    output_wav: str
+        Destination path for the normalized (or copied) WAV.
+    enabled: bool, optional
+        Whether to perform loudness normalization. Defaults to ``True``.
+
+    Returns
+    -------
+    str
+        Path to the resulting WAV file.
+    """
+    if not enabled:
+        logger.info(
+            "Normalization disabled; copying %s to %s", input_wav, output_wav
+        )
+        try:
+            shutil.copyfile(input_wav, output_wav)
+        except OSError as exc:  # pragma: no cover - defensive
+            logger.error("File copy failed: %s", exc)
+            raise RuntimeError("audio copy failed") from exc
+        return output_wav
+
+    logger.info("Normalizing audio %s to %s", input_wav, output_wav)
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        input_wav,
+        "-af",
+        "loudnorm",
+        output_wav,
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        logger.info("Audio normalized to %s", output_wav)
+    except subprocess.CalledProcessError as exc:  # pragma: no cover - defensive
+        err = exc.stderr.decode() if hasattr(exc.stderr, "decode") else str(exc)
+        logger.error("ffmpeg normalization failed: %s", err.strip())
+        raise RuntimeError("ffmpeg audio normalization failed") from exc
+    return output_wav
 
 
 if __name__ == "__main__":

@@ -20,3 +20,4 @@ dependencies:
       - packaging        # version parsing for dependency checks
       # Optional extras
       - rich             # pretty logging in the terminal
+      - pyyaml

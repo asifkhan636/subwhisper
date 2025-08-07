@@ -1,5 +1,6 @@
 import sys
 import pathlib
+import json
 from types import SimpleNamespace
 import pytest
 
@@ -7,7 +8,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from format_subtitles import format_subtitles
+from format_subtitles import (
+    apply_corrections,
+    format_subtitles,
+    load_replacements,
+)
 
 
 def test_merge_and_line_split():
@@ -119,3 +124,29 @@ def test_skip_music_segments():
     )
     blocks = format_subtitles(segments, cfg)
     assert blocks == [{"start": 0.0, "end": 1.0, "lines": ["speech"]}]
+
+
+def test_apply_corrections_basic(caplog):
+    rules = {"hello world": "hi earth", "cat": "dog"}
+    caplog.set_level("DEBUG")
+    result = apply_corrections("hello world cat", rules)
+    assert result == "hi earth dog"
+    assert "hello world" in caplog.text
+
+
+def test_apply_corrections_regex(caplog):
+    rules = {r"c[ao]t": "dog"}
+    caplog.set_level("DEBUG")
+    result = apply_corrections("the cat sat on the cot", rules, use_regex=True)
+    assert result == "the dog sat on the dog"
+    assert "c[ao]t" in caplog.text
+
+
+def test_load_replacements_json_yaml(tmp_path):
+    json_path = tmp_path / "rules.json"
+    json_path.write_text(json.dumps({"foo": "bar"}))
+    yaml_path = tmp_path / "rules.yaml"
+    yaml_path.write_text("baz: qux\n")
+
+    assert load_replacements(str(json_path)) == {"foo": "bar"}
+    assert load_replacements(str(yaml_path)) == {"baz": "qux"}

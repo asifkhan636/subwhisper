@@ -1,7 +1,17 @@
 """Subtitle formatting utilities."""
 from __future__ import annotations
 
+import json
+import logging
+import re
 from typing import Any, Dict, Iterable, List
+
+try:  # pragma: no cover - optional dependency
+    import yaml
+except Exception:  # pragma: no cover - optional dependency
+    yaml = None
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigDict(dict):
@@ -20,6 +30,65 @@ def _as_dict(config: Any) -> Dict[str, Any]:
         return config
     # Try to handle SimpleNamespace or similar objects
     return {k: getattr(config, k) for k in dir(config) if not k.startswith("__")}
+
+
+def load_replacements(path: str) -> Dict[str, str]:
+    """Load replacement rules from a JSON or YAML file.
+
+    Parameters
+    ----------
+    path:
+        Path to a JSON or YAML file containing a mapping of patterns to
+        replacement strings.
+
+    Returns
+    -------
+    dict
+        Mapping of patterns to replacement strings.
+    """
+    with open(path, "r", encoding="utf-8") as fh:
+        if path.lower().endswith((".yml", ".yaml")):
+            if yaml is None:  # pragma: no cover - depends on optional package
+                raise RuntimeError("PyYAML is required to load YAML files")
+            data = yaml.safe_load(fh) or {}
+        else:
+            data = json.load(fh)
+    if not isinstance(data, dict):
+        raise ValueError("Replacement rules must be a mapping")
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def apply_corrections(text: str, rules: Dict[str, str], use_regex: bool = False) -> str:
+    """Apply replacement ``rules`` to ``text``.
+
+    When ``use_regex`` is ``True`` the keys in ``rules`` are treated as regular
+    expressions. Each performed replacement is logged at debug level allowing
+    callers to enable a ``--debug`` flag in command-line interfaces.
+
+    Parameters
+    ----------
+    text:
+        The input text to transform.
+    rules:
+        Mapping of patterns to replacement strings.
+    use_regex:
+        Interpret keys in ``rules`` as regular expressions.
+
+    Returns
+    -------
+    str
+        The transformed text.
+    """
+    for pattern, repl in rules.items():
+        if use_regex:
+            text, count = re.subn(pattern, repl, text)
+        else:
+            count = text.count(pattern)
+            if count:
+                text = text.replace(pattern, repl)
+        if count:
+            logger.debug("Replaced %r -> %r (%d matches)", pattern, repl, count)
+    return text
 
 
 def format_subtitles(segments: List[Dict[str, Any]], config: Any) -> List[Dict[str, Any]]:

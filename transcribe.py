@@ -1,4 +1,30 @@
-"""Utilities for transcribing audio with WhisperX and word-level alignment."""
+"""Utilities for transcribing audio with WhisperX and word-level alignment.
+
+The transcription pipeline writes two JSON files to the output directory:
+
+``transcript.json``
+    The raw WhisperX segments enriched with an ``is_music`` flag.
+
+``segments.json``
+    A simplified representation used by downstream tooling.  It contains a
+    list of segments following the schema::
+
+        [
+            {
+                "start": float,
+                "end": float,
+                "text": str,
+                "words": [
+                    {"word": str, "start": float, "end": float},
+                    ...
+                ],
+            },
+            ...
+        ]
+
+    ``words`` is empty when a segment was skipped during alignment (e.g. for
+    music sections).
+"""
 
 from __future__ import annotations
 
@@ -99,11 +125,28 @@ def transcribe_and_align(
             final_segments.append(aligned_seg)
 
     os.makedirs(outdir, exist_ok=True)
-    output_path = os.path.join(outdir, "transcript.json")
-    with open(output_path, "w", encoding="utf-8") as fh:
+    transcript_path = os.path.join(outdir, "transcript.json")
+    with open(transcript_path, "w", encoding="utf-8") as fh:
         json.dump({"segments": final_segments}, fh, ensure_ascii=False, indent=2)
 
-    return output_path
+    simple_segments = [
+        {
+            "start": seg["start"],
+            "end": seg["end"],
+            "text": seg["text"],
+            "words": [
+                {"word": w["word"], "start": w["start"], "end": w["end"]}
+                for w in seg.get("words", [])
+            ],
+        }
+        for seg in final_segments
+    ]
+
+    segments_path = os.path.join(outdir, "segments.json")
+    with open(segments_path, "w", encoding="utf-8") as fh:
+        json.dump(simple_segments, fh, ensure_ascii=False, indent=2)
+
+    return segments_path
 
 
 def main() -> None:

@@ -5,9 +5,11 @@ import argparse
 import logging
 import re
 import statistics
+import json
+import csv
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List, Optional
 
 import jiwer
 import pysubs2
@@ -151,27 +153,115 @@ def validate_sync(srt_path: str, audio_path: str) -> Dict[str, Any]:
     return metrics
 
 
-def main(argv: Iterable[str] | None = None):
-    """Command-line interface for quality control utilities."""
+def _gather_srt_files(paths: List[str], recursive: bool) -> List[Path]:
+    """Expand ``paths`` into a list of subtitle files."""
+    results: List[Path] = []
+    for p in map(Path, paths):
+        if p.is_file():
+            results.append(p)
+        elif p.is_dir():
+            pattern = "**/*.srt" if recursive else "*.srt"
+            results.extend(sorted(p.glob(pattern)))
+    return results
+
+
+def _match_file(base: Optional[str], target: Path, extensions: List[str]) -> Optional[Path]:
+    """Return a file in ``base`` matching ``target``'s stem."""
+    if base is None:
+        return None
+    base_path = Path(base)
+    if base_path.is_file():
+        return base_path
+    stem = target.stem
+    if base_path.is_dir():
+        for ext in extensions:
+            candidate = base_path / f"{stem}{ext}"
+            if candidate.exists():
+                return candidate
+    return None
+
+
+def _aggregate_numeric(rows: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Compute mean of numeric fields across ``rows``."""
+    agg: Dict[str, float] = {}
+    numeric_keys: set[str] = set()
+    for row in rows:
+        for k, v in row.items():
+            if isinstance(v, (int, float)):
+                numeric_keys.add(k)
+    for key in numeric_keys:
+        values = [r[key] for r in rows if isinstance(r.get(key), (int, float))]
+        if values:
+            agg[key] = statistics.mean(values)
+    return agg
+
+
+def _write_csv(path: str, rows: List[Dict[str, Any]], aggregate: Dict[str, float]) -> None:
+    """Write per-episode metrics and aggregate summary to CSV."""
+    fieldnames = sorted({k for row in rows for k in row if k != "file"})
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["file"] + fieldnames)
+        writer.writeheader()
+        for row in rows:
+            out = {k: (json.dumps(v) if isinstance(v, (list, dict)) else v) for k, v in row.items()}
+            writer.writerow(out)
+        agg_row = {"file": "MEAN"}
+        for k, v in aggregate.items():
+            agg_row[k] = v
+        writer.writerow(agg_row)
+
+
+def main(argv: Iterable[str] | None = None) -> Dict[str, Any]:
+    """Command-line interface for quality control utilities.
+
+    Parameters
+    ----------
+    argv:
+        Optional command-line arguments.
+    """
     parser = argparse.ArgumentParser(description="Quality control utilities")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    wer_p = subparsers.add_parser("wer", help="Compute word error rate")
-    wer_p.add_argument("hyp")
-    wer_p.add_argument("ref")
-
-    sync_p = subparsers.add_parser("sync", help="Validate subtitle sync")
-    sync_p.add_argument("srt")
-    sync_p.add_argument("audio")
+    parser.add_argument("generated", nargs="+", help="Generated subtitle file(s) or directory")
+    parser.add_argument("--reference", "-r", help="Reference transcript file or directory")
+    parser.add_argument("--audio", "-a", help="Audio file or directory")
+    parser.add_argument("--wer", action=argparse.BooleanOptionalAction, default=True, help="Enable WER computation")
+    parser.add_argument("--sync", action=argparse.BooleanOptionalAction, default=True, help="Enable sync validation")
+    parser.add_argument("--metrics", action=argparse.BooleanOptionalAction, default=True, help="Collect subtitle metrics")
+    parser.add_argument("--json", dest="json_path", help="Write JSON summary to PATH")
+    parser.add_argument("--csv", dest="csv_path", help="Write CSV summary to PATH")
+    parser.add_argument("--recursive", action="store_true", help="Recurse into directories")
 
     args = parser.parse_args(argv)
-
     logging.basicConfig(level=logging.INFO)
-    if args.command == "wer":
-        return compute_wer(args.hyp, args.ref)
-    if args.command == "sync":
-        return validate_sync(args.srt, args.audio)
-    raise ValueError(f"Unknown command {args.command}")
+
+    srt_files = _gather_srt_files(args.generated, args.recursive)
+    episodes: List[Dict[str, Any]] = []
+    for srt in srt_files:
+        episode: Dict[str, Any] = {"file": str(srt)}
+        ref_path = _match_file(args.reference, srt, [".srt", ".txt"])
+        audio_path = _match_file(args.audio, srt, [".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"])
+
+        if args.metrics:
+            episode.update(collect_metrics(str(srt)))
+        if args.wer and ref_path:
+            episode["wer"] = compute_wer(str(srt), str(ref_path))
+        if args.sync and audio_path:
+            sync_metrics = validate_sync(str(srt), str(audio_path))
+            episode.update({f"sync_{k}": v for k, v in sync_metrics.items()})
+
+        logger.info("Metrics for %s: %s", srt, episode)
+        episodes.append(episode)
+
+    aggregate = _aggregate_numeric(episodes)
+
+    if args.json_path:
+        Path(args.json_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.json_path, "w", encoding="utf-8") as fh:
+            json.dump({"episodes": episodes, "aggregate": aggregate}, fh, indent=2)
+    if args.csv_path:
+        Path(args.csv_path).parent.mkdir(parents=True, exist_ok=True)
+        _write_csv(args.csv_path, episodes, aggregate)
+
+    return {"episodes": episodes, "aggregate": aggregate}
 
 
 if __name__ == "__main__":  # pragma: no cover - convenience CLI

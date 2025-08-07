@@ -21,3 +21,4 @@ dependencies:
       # Optional extras
       - rich             # pretty logging in the terminal
       - pyyaml
+      - language_tool_python

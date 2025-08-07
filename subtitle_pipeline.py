@@ -100,3 +100,28 @@ def enforce_limits(
         i += 1
 
     return subs
+
+
+def spellcheck_lines(subs: pysubs2.SSAFile, lang: str = "en-US") -> pysubs2.SSAFile:
+    """Spell-check subtitle lines using `language_tool_python`.
+
+    Parameters
+    ----------
+    subs:
+        Subtitle collection to mutate.
+    lang:
+        Language code understood by `language_tool_python.LanguageTool`.
+
+    Returns
+    -------
+    pysubs2.SSAFile
+        The modified subtitle file (same object as ``subs``).
+    """
+
+    import language_tool_python
+
+    tool = language_tool_python.LanguageTool(lang)
+    for ev in subs.events:
+        corrected = tool.correct(ev.plaintext)
+        ev.text = corrected.replace("\n", "\\N")
+    return subs

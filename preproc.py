@@ -9,6 +9,7 @@ import librosa
 import noisereduce as nr
 import soundfile as sf
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -147,11 +148,15 @@ def denoise_audio(audio_path: str, output_path: str, aggressiveness: float = 0.8
         Path to the denoised WAV file.
     """
     logger.info("Loading audio from %s", audio_path)
-    data, rate = sf.read(audio_path)
-    logger.info("Applying noise reduction (aggressiveness=%s)", aggressiveness)
-    reduced = nr.reduce_noise(y=data, sr=rate, prop_decrease=aggressiveness)
-    logger.info("Writing denoised audio to %s", output_path)
-    sf.write(output_path, reduced, rate)
+    try:
+        data, rate = sf.read(audio_path)
+        logger.info("Applying noise reduction (aggressiveness=%s)", aggressiveness)
+        reduced = nr.reduce_noise(y=data, sr=rate, prop_decrease=aggressiveness)
+        logger.info("Writing denoised audio to %s", output_path)
+        sf.write(output_path, reduced, rate)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Noise reduction failed: %s", exc)
+        raise RuntimeError("noise reduction failed") from exc
     return output_path
 
 
@@ -234,38 +239,48 @@ def detect_music_segments(audio_path: str, threshold: float = 0.5) -> List[Tuple
         regions.
     """
 
-    logger.info("Loading audio from %s", audio_path)
-    y, sr = librosa.load(audio_path, sr=None, mono=True)
-    logger.info("Separating harmonic and percussive components")
-    y_harm, y_perc = librosa.effects.hpss(y)
+    try:
+        logger.info("Loading audio from %s", audio_path)
+        y, sr = librosa.load(audio_path, sr=None, mono=True)
+        logger.info("Separating harmonic and percussive components")
+        y_harm, y_perc = librosa.effects.hpss(y)
 
-    frame_length = 2048
-    hop_length = 512
-    logger.info("Computing RMS energies")
-    harm_rms = librosa.feature.rms(y=y_harm, frame_length=frame_length, hop_length=hop_length)[0]
-    perc_rms = librosa.feature.rms(y=y_perc, frame_length=frame_length, hop_length=hop_length)[0]
+        frame_length = 2048
+        hop_length = 512
+        logger.info("Computing RMS energies")
+        harm_rms = librosa.feature.rms(
+            y=y_harm, frame_length=frame_length, hop_length=hop_length
+        )[0]
+        perc_rms = librosa.feature.rms(
+            y=y_perc, frame_length=frame_length, hop_length=hop_length
+        )[0]
 
-    ratio = perc_rms / (harm_rms + 1e-10)
-    mask = ratio > threshold
+        ratio = perc_rms / (harm_rms + 1e-10)
+        mask = ratio > threshold
 
-    segments: List[Tuple[float, float]] = []
-    start_time: Optional[float] = None
-    for idx, is_music in enumerate(mask):
-        time = librosa.frames_to_time(idx, sr=sr, hop_length=hop_length)
-        if is_music and start_time is None:
-            start_time = time
-        elif not is_music and start_time is not None:
-            segments.append((start_time, time))
-            start_time = None
+        segments: List[Tuple[float, float]] = []
+        start_time: Optional[float] = None
+        for idx, is_music in enumerate(mask):
+            time = librosa.frames_to_time(idx, sr=sr, hop_length=hop_length)
+            if is_music and start_time is None:
+                start_time = time
+            elif not is_music and start_time is not None:
+                segments.append((start_time, time))
+                start_time = None
 
-    if start_time is not None:
-        end_time = librosa.frames_to_time(len(mask), sr=sr, hop_length=hop_length)
-        segments.append((start_time, end_time))
+        if start_time is not None:
+            end_time = librosa.frames_to_time(
+                len(mask), sr=sr, hop_length=hop_length
+            )
+            segments.append((start_time, end_time))
 
-    logger.info("Detected %s music segments", len(segments))
-    with open("music_segments.json", "w", encoding="utf-8") as fh:
-        json.dump(segments, fh)
-    return segments
+        logger.info("Detected %s music segments", len(segments))
+        with open("music_segments.json", "w", encoding="utf-8") as fh:
+            json.dump(segments, fh)
+        return segments
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Music segment detection failed: %s", exc)
+        raise RuntimeError("music segment detection failed") from exc
 
 
 def preprocess_pipeline(
@@ -327,8 +342,6 @@ def preprocess_pipeline(
 def main() -> None:
     """Entry point for command-line execution."""
     import argparse
-
-    logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(description="Preprocess audio for SubWhisper")
     parser.add_argument("--input", required=True, help="Input media file")

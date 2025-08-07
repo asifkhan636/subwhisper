@@ -13,6 +13,7 @@ containing `{audio}` and `{outdir}` placeholders to customise behaviour.
 """
 
 import argparse
+import logging
 import os
 import shlex
 import subprocess
@@ -20,10 +21,14 @@ import sys
 from typing import Iterable
 
 
-def run_command(cmd: Iterable[str], description: str) -> bool:
-    """Execute a command list and print diagnostics on failure."""
-    print(f"\n[{description}]")
-    print("Command:", " ".join(cmd))
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def run_command(cmd: Iterable[str], description: str) -> None:
+    """Execute a command list and raise informative errors on failure."""
+    logger.info("[%s]", description)
+    logger.info("Command: %s", " ".join(cmd))
     try:
         completed = subprocess.run(
             cmd,
@@ -32,20 +37,19 @@ def run_command(cmd: Iterable[str], description: str) -> bool:
             stderr=subprocess.PIPE,
             text=True,
         )
+        if completed.stdout:
+            logger.info(completed.stdout)
+        if completed.stderr:
+            logger.info(completed.stderr)
+        logger.info("%s completed successfully.", description)
     except subprocess.CalledProcessError as exc:  # pragma: no cover - defensive
-        print(f"{description} failed with exit code {exc.returncode}")
         if exc.stdout:
-            print(exc.stdout)
+            logger.error(exc.stdout)
         if exc.stderr:
-            print(exc.stderr)
-        return False
-
-    if completed.stdout:
-        print(completed.stdout)
-    if completed.stderr:
-        print(completed.stderr)
-    print(f"{description} completed successfully.")
-    return True
+            logger.error(exc.stderr)
+        raise RuntimeError(
+            f"{description} failed with exit code {exc.returncode}"
+        ) from exc
 
 
 def main() -> None:
@@ -90,7 +94,10 @@ def main() -> None:
         "pcm_s16le",
         args.audio,
     ]
-    if not run_command(ffmpeg_cmd, "ffmpeg extraction"):
+    try:
+        run_command(ffmpeg_cmd, "ffmpeg extraction")
+    except RuntimeError as exc:
+        logger.error("%s", exc)
         sys.exit(1)
 
     os.makedirs(args.outdir, exist_ok=True)
@@ -168,7 +175,11 @@ def main() -> None:
     # ------------------------------------------------------------------
     for idx, tmpl in enumerate(templates, 1):
         cmd = shlex.split(tmpl.format(audio=args.audio, outdir=args.outdir))
-        run_command(cmd, f"WhisperX command {idx}/{len(templates)}")
+        try:
+            run_command(cmd, f"WhisperX command {idx}/{len(templates)}")
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
 from format_subtitles import (
     apply_corrections,
     format_subtitles,
-    load_replacements,
+    load_corrections,
 )
 
 
@@ -131,7 +131,8 @@ def test_apply_corrections_basic(caplog):
     caplog.set_level("DEBUG")
     result = apply_corrections("hello world cat", rules)
     assert result == "hi earth dog"
-    assert "hello world" in caplog.text
+    # original line is logged when debug enabled
+    assert "hello world cat" in caplog.text
 
 
 def test_apply_corrections_regex(caplog):
@@ -139,14 +140,22 @@ def test_apply_corrections_regex(caplog):
     caplog.set_level("DEBUG")
     result = apply_corrections("the cat sat on the cot", rules, use_regex=True)
     assert result == "the dog sat on the dog"
-    assert "c[ao]t" in caplog.text
+    assert "the cat sat on the cot" in caplog.text
 
 
-def test_load_replacements_json_yaml(tmp_path):
+def test_apply_corrections_multiline(caplog):
+    rules = {"foo": "bar"}
+    caplog.set_level("DEBUG")
+    result = apply_corrections("foo\nfoo", rules)
+    assert result == "bar\nbar"
+    assert caplog.text.count("foo") >= 2
+
+
+def test_load_corrections_json_yaml(tmp_path):
     json_path = tmp_path / "rules.json"
     json_path.write_text(json.dumps({"foo": "bar"}))
     yaml_path = tmp_path / "rules.yaml"
     yaml_path.write_text("baz: qux\n")
 
-    assert load_replacements(str(json_path)) == {"foo": "bar"}
-    assert load_replacements(str(yaml_path)) == {"baz": "qux"}
+    assert load_corrections(json_path) == {"foo": "bar"}
+    assert load_corrections(yaml_path) == {"baz": "qux"}

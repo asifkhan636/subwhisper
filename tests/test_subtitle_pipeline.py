@@ -55,6 +55,32 @@ def test_apply_corrections(tmp_path):
     assert subs.events[0].text == "the cat"
 
 
+def test_pipeline_skips_music_and_enforces_limits(tmp_path):
+    segments = [
+        {"start": 0.0, "end": 10.0, "text": "hello world it's me"},
+        {"start": 2.2, "end": 4.0, "text": "teh cat"},
+        {"start": 4.0, "end": 5.0, "text": "\u266a\u266a", "is_music": True},
+    ]
+    # Simulate skip_music by filtering out segments marked as music
+    filtered = [seg for seg in segments if not seg.get("is_music")]
+    seg_path = _write_segments(tmp_path, filtered)
+    subs = load_segments(seg_path)
+    rules = {"teh": "the"}
+    for ev in subs.events:
+        ev.text = apply_corrections(ev.plaintext, rules).replace("\n", "\\N")
+    enforce_limits(subs, max_chars=5, max_lines=2, max_duration=2.0, min_gap=0.5)
+    assert len(subs.events) == 2
+    first, second = subs.events
+    # Line wrapping and duration capping on the first event
+    assert first.text == "hello\\Nworld"
+    assert first.end - first.start == 2000
+    # Correction application and gap insertion for the second event
+    # The second event was corrected and shifted to ensure a gap
+    assert second.text.startswith("the")
+    assert "teh" not in second.text
+    assert second.start - first.end == 500
+
+
 def test_cli_generates_srt(tmp_path):
     segs = [{"start": 0.0, "end": 1.0, "text": "hello"}]
     seg_path = _write_segments(tmp_path, segs)

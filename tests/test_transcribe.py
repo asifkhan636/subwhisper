@@ -46,12 +46,17 @@ def test_mark_music(tmp_path):
         "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=False
     )
     data = json.loads(tmp_path.joinpath("transcript.json").read_text())
+    simple = json.loads(tmp_path.joinpath("segments.json").read_text())
 
     assert len(data["segments"]) == 2
     assert data["segments"][0]["is_music"] is True
     assert "words" not in data["segments"][0]
     assert data["segments"][1]["is_music"] is False
     assert data["segments"][1]["words"][0]["word"] == "World"
+
+    assert len(simple) == 2
+    assert simple[0]["words"] == []
+    assert simple[1]["words"][0]["word"] == "World"
 
 
 def test_skip_music(tmp_path):
@@ -71,10 +76,14 @@ def test_skip_music(tmp_path):
         "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=True
     )
     data = json.loads(tmp_path.joinpath("transcript.json").read_text())
+    simple = json.loads(tmp_path.joinpath("segments.json").read_text())
 
     assert len(data["segments"]) == 1
     assert data["segments"][0]["is_music"] is False
     assert data["segments"][0]["text"] == "World"
+
+    assert len(simple) == 1
+    assert simple[0]["text"] == "World"
 
 
 def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
@@ -88,7 +97,7 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
         assert kwargs["beam_size"] == 2
         assert kwargs["compute_type"] == "float16"
         assert kwargs["music_segments"] == [[0.0, 1.0]]
-        return str(tmp_path / "transcript.json")
+        return str(tmp_path / "segments.json")
 
     monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
 
@@ -117,7 +126,7 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
         transcribe.main()
     captured = capsys.readouterr()
 
-    assert str(tmp_path / "transcript.json") in captured.out
+    assert str(tmp_path / "segments.json") in captured.out
     assert "Model: tiny" in caplog.text
     assert "Batch size: 4" in caplog.text
 

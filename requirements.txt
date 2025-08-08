@@ -3,7 +3,7 @@ torch>=2.5
 pyannote.audio>=3.3
 pysubs2>=1.8.0
 speechbrain>=1.0
-whisperx>=3.4.2,<4
+whisperx>=3.4.2,<4  # use latest WhisperX
 librosa>=0.10
 noisereduce>=3.0
 packaging

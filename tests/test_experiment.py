@@ -59,6 +59,10 @@ def test_run_logging_and_aggregation(tmp_path, monkeypatch):
     exp = SubtitleExperiment(cfg)
     run_dir = Path(cfg["output_root"]) / cfg["run_id"]
     cfg_path = run_dir / f"config_{cfg['run_id']}.json"
+    commit_path = run_dir / f"commit_{cfg['run_id']}.txt"
+    reqs_path = run_dir / "requirements.txt"
+    assert commit_path.exists()
+    assert reqs_path.exists()
     assert not cfg_path.exists()
 
     exp.run()
@@ -82,6 +86,8 @@ def test_run_logging_and_aggregation(tmp_path, monkeypatch):
     assert rows[0]["run_id"] == cfg["run_id"]
     loaded_cfg = json.loads(rows[0]["config"])
     assert loaded_cfg["run_id"] == cfg["run_id"]
+    commit_val = commit_path.read_text().strip()
+    assert loaded_cfg["git_commit"] == commit_val
     assert float(rows[0]["avg_subtitle_count"]) == 1
 
     summary_md = run_dir / "summary.md"
@@ -212,9 +218,13 @@ def test_parameter_sweep_outputs_and_aggregation(tmp_path, monkeypatch):
         cfg_file = run_dir / f"config_{run_id}.json"
         metrics_file = run_dir / f"metrics_{run_id}.json"
         log_file = run_dir / "run.log"
+        commit_file = run_dir / f"commit_{run_id}.txt"
+        req_file = run_dir / "requirements.txt"
         assert cfg_file.exists()
         assert metrics_file.exists()
         assert log_file.exists()
+        assert commit_file.exists()
+        assert req_file.exists()
         metrics = json.loads(metrics_file.read_text())
         assert metrics[0]["subtitle_count"] == 1
 

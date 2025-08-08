@@ -9,12 +9,36 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
+import subprocess
 
 from corrections import apply_corrections, load_corrections
 from preproc import preprocess_pipeline
 import qc
 from subtitle_pipeline import enforce_limits, load_segments, write_outputs
 from transcribe import transcribe_and_align
+
+ROOT = Path(__file__).resolve().parent
+
+
+def _get_git_commit() -> str:
+    """Return current git commit hash or 'unknown' if unavailable."""
+    try:
+        result = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT)
+        return result.decode().strip()
+    except Exception:  # pragma: no cover - defensive
+        return "unknown"
+
+
+def _snapshot_requirements(path: Path) -> None:
+    """Write ``pip freeze`` output to ``path``.
+
+    Errors are swallowed to avoid disrupting experiment setup.
+    """
+    try:  # pragma: no cover - external command
+        reqs = subprocess.check_output(["pip", "freeze"], text=True)
+    except Exception:
+        reqs = ""
+    path.write_text(reqs, encoding="utf-8")
 
 
 class SubtitleExperiment:
@@ -41,6 +65,13 @@ class SubtitleExperiment:
         output_root = Path(config.get("output_root", "runs"))
         self.run_dir = output_root / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
+
+        # record git commit and environment snapshot for reproducibility
+        self.git_commit = _get_git_commit()
+        commit_path = self.run_dir / f"commit_{self.run_id}.txt"
+        commit_path.write_text(self.git_commit, encoding="utf-8")
+        self.config["git_commit"] = self.git_commit
+        _snapshot_requirements(self.run_dir / "requirements.txt")
 
         # log everything to a file under the run directory
         self.log_file = self.run_dir / "run.log"

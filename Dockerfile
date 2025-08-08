@@ -7,7 +7,11 @@ WORKDIR /app
 # Install system dependencies and Python requirements
 COPY requirements.txt ./
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        espeak-ng \
+        libxml2 \
+        libxslt1.1 \
     && pip install --no-cache-dir -r requirements.txt \
     && rm -rf /var/lib/apt/lists/*
 

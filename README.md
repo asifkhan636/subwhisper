@@ -399,12 +399,44 @@ The CLI exposes a number of switches for customising behaviour:
 - `--strip-punctuation`: remove punctuation from subtitle text
 - `--language`: override language detection with a code like `en` (default: auto)
 
+## Maintenance
+
+Old run outputs can accumulate over time. The `maintenance.py` helper removes
+large intermediate files and archives completed runs to save space. By default
+it performs a dry run and simply reports the actions:
+
+```bash
+python maintenance.py --output-root runs --days 30
+```
+
+Pass `--delete` to apply the deletions after creating `.tar.gz` archives:
+
+```bash
+python maintenance.py --output-root runs --days 30 --delete
+```
+
+### Scheduling
+
+To run the cleanup periodically with cron:
+
+```cron
+0 2 * * * /usr/bin/python /path/to/maintenance.py --output-root /data/output --days 30 --delete
+```
+
+In Airflow, a `BashOperator` can invoke the script on a schedule:
+
+```python
+BashOperator(
+    task_id="subwhisper_maintenance",
+    bash_command="python /path/to/maintenance.py --output-root /data/output --days 30 --delete",
+)
+```
+
 ## Potential Enhancements
 
 - Integrate speaker diarization for multi‑speaker videos
 - Generate word‑level timestamps or translation
 - Parallelise processing across multiple GPUs
-- Automatically clean up temporary audio files
 
 ## Troubleshooting Tips
 

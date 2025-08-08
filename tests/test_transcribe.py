@@ -64,10 +64,11 @@ def test_forwards_options(tmp_path):
         }
         return DummyModel()
 
-    def load_align_model(model_name, language_code):
+    def load_align_model(model_name, language_code, device):
         calls["load_align_model"] = {
             "model_name": model_name,
             "language_code": language_code,
+            "device": device,
         }
         return ("align", "meta")
 
@@ -105,6 +106,7 @@ def test_forwards_options(tmp_path):
     assert calls["load_align_model"] == {
         "model_name": transcribe.ALIGN_MODEL_NAME,
         "language_code": "en",
+        "device": expected_device,
     }
     assert calls["align"] == {"batch_size": 4}
     assert json.loads(tmp_path.joinpath("segments.json").read_text())[0]["words"][0]["word"] == "Hello"

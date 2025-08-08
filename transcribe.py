@@ -1,3 +1,9 @@
+# Summary of changes
+# ------------------
+# - Removed unsupported ``batch_size`` argument from ``whisperx.load_model`` to
+#   avoid ``TypeError`` with newer WhisperX versions. ``batch_size`` is now only
+#   passed to ``transcribe`` and ``align``.
+
 """Utilities for transcribing audio with WhisperX and word-level alignment.
 
 The script expects the mono 16 kHz WAV produced by ``preproc.py`` and,
@@ -104,8 +110,10 @@ def transcribe_and_align(
         Path to the JSON file containing aligned segments.
     """
     asr_model = whisperx.load_model(
-        model, language="en", compute_type=compute_type, batch_size=batch_size
+        model, language="en", compute_type=compute_type
     )
+    # NOTE: ``batch_size`` is not accepted by ``whisperx.load_model`` in current
+    # versions. Specify ``batch_size`` only in ``transcribe`` and ``align`` calls.
 
     audio = whisperx.load_audio(audio_path)
     try:

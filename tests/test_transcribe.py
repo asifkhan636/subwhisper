@@ -43,11 +43,10 @@ def test_forwards_options(tmp_path):
             }
             return {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello"}]}
 
-    def load_model(model, language, compute_type, batch_size):
+    def load_model(model, language, compute_type):
         calls["load_model"] = {
             "language": language,
             "compute_type": compute_type,
-            "batch_size": batch_size,
         }
         return DummyModel()
 
@@ -81,7 +80,6 @@ def test_forwards_options(tmp_path):
     assert calls["load_model"] == {
         "language": "en",
         "compute_type": "float16",
-        "batch_size": 4,
     }
     assert calls["transcribe"] == {
         "batch_size": 4,

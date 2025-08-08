@@ -448,13 +448,19 @@ BashOperator(
 
 ## Running Tests
 
-The project includes a small pytest suite with mocked dependencies. To run
-the tests, execute:
+The project includes a pytest suite with mocked dependencies. To run all tests
+locally:
 
 ```bash
 pytest
 ```
 
-The tests use mock objects so they do not require heavy dependencies such as
-`ffmpeg` or `whisperx` to be installed.
+To focus on the API endpoints verified in `tests/test_api.py` you can run:
+
+```bash
+pytest tests/test_api.py
+```
+
+These tests rely on lightweight stubs, so they execute quickly without
+installing heavy runtime dependencies like `ffmpeg` or `whisperx`.
 

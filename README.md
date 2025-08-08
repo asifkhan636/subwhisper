@@ -150,9 +150,18 @@ inside the container (e.g. `/data/input/video.mp4` and set `output_root` to
 
 ### CPU and GPU variants
 
-The provided `Dockerfile` installs the CPU build of PyTorch. To leverage GPU
-hardware, swap the base image for a CUDA-enabled PyTorch image and run the
-container with `--gpus all` or an equivalent Docker Compose configuration.
+The provided `Dockerfile` builds a CPU-only image that uses the CPU build of
+PyTorch. For GPU acceleration, replace the base image with a CUDA-enabled
+PyTorch image, then rebuild and run the container with access to your GPU:
+
+```bash
+docker build -t subwhisper-cuda .
+docker run --gpus all subwhisper-cuda
+```
+
+Using `--gpus all` enables Docker's GPU passthrough so the container can run
+CUDA workloads. A similar flag can be added to your Docker Compose
+configuration if preferred.
 
 ## Phase-1: Audio Preprocessing
 

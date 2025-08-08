@@ -31,15 +31,16 @@ def _setup_run(tmp_path: Path):
 def test_review_roundtrip(tmp_path: Path):
     run_id, srt_path = _setup_run(tmp_path)
     client = TestClient(app)
+    headers = {"Authorization": "Bearer test-token"}
 
-    resp = client.get(f"/review/{run_id}")
+    resp = client.get(f"/review/{run_id}", headers=headers)
     assert resp.status_code == 200
     data = resp.json()
     assert "sample.srt" in data["subtitles"]
     assert "teh cat" in data["subtitles"]["sample.srt"]
 
     payload = {"corrections": {"teh": "the"}, "reviewer": {"name": "Bob"}}
-    resp = client.post(f"/review/{run_id}", json=payload)
+    resp = client.post(f"/review/{run_id}", json=payload, headers=headers)
     assert resp.status_code == 200
     assert resp.json()["applied"] == 1
 
@@ -54,4 +55,12 @@ def test_review_roundtrip(tmp_path: Path):
     ).read_text(encoding="utf-8").strip().splitlines()
     assert json.loads(log_lines[-1])["reviewer"]["name"] == "Bob"
 
+    RUNS.clear()
+
+
+def test_requires_auth(tmp_path: Path) -> None:
+    run_id, _ = _setup_run(tmp_path)
+    client = TestClient(app)
+    resp = client.get(f"/review/{run_id}")
+    assert resp.status_code == 401
     RUNS.clear()

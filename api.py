@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pysubs2
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from corrections import apply_corrections, load_corrections
-from experiment import SubtitleExperiment
+from auth import require_role
 
 app = FastAPI()
 
@@ -35,9 +35,11 @@ def _execute(exp: SubtitleExperiment, run_id: str) -> None:
         info["error"] = str(exc)
 
 
-@app.post("/run")
+@app.post("/run", dependencies=[Depends(require_role("admin"))])
 def run(config: Dict[str, Any], background_tasks: BackgroundTasks) -> Dict[str, str]:
     """Start a new experiment run with the provided configuration."""
+    from experiment import SubtitleExperiment
+
     exp = SubtitleExperiment(config)
     run_id = exp.run_id
     RUNS[run_id] = {
@@ -49,7 +51,7 @@ def run(config: Dict[str, Any], background_tasks: BackgroundTasks) -> Dict[str, 
     return {"run_id": run_id}
 
 
-@app.get("/status/{run_id}")
+@app.get("/status/{run_id}", dependencies=[Depends(require_role("viewer", "admin"))])
 def status(run_id: str) -> Dict[str, Any]:
     """Return the status, log content and output directory for a run."""
     info = RUNS.get(run_id)
@@ -70,7 +72,7 @@ def status(run_id: str) -> Dict[str, Any]:
     }
 
 
-@app.get("/download/{run_id}")
+@app.get("/download/{run_id}", dependencies=[Depends(require_role("viewer", "admin"))])
 def download(run_id: str) -> FileResponse:
     """Provide a zip archive of the run directory for download."""
     info = RUNS.get(run_id)
@@ -85,7 +87,7 @@ def download(run_id: str) -> FileResponse:
     return FileResponse(zip_path, filename=f"{run_dir.name}.zip")
 
 
-@app.get("/review/{run_id}")
+@app.get("/review/{run_id}", dependencies=[Depends(require_role("viewer", "admin"))])
 def review(run_id: str) -> Dict[str, Any]:
     """Return current subtitle files for ``run_id``."""
     info = RUNS.get(run_id)
@@ -105,7 +107,7 @@ def review(run_id: str) -> Dict[str, Any]:
     return {"run_id": run_id, "subtitles": subtitles}
 
 
-@app.post("/review/{run_id}")
+@app.post("/review/{run_id}", dependencies=[Depends(require_role("admin"))])
 def submit_review(run_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Accept corrections and reapply them to subtitle files.
 

@@ -30,7 +30,9 @@ class SubtitleExperiment:
     def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
         self.run_id = config.get("run_id", uuid.uuid4().hex[:8])
-        self.run_dir = Path("runs") / self.run_id
+        # Allow experiments to be directed to an alternate root directory.
+        output_root = Path(config.get("output_root", "runs"))
+        self.run_dir = output_root / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         # persist configuration for traceability

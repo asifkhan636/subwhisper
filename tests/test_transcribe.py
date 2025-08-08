@@ -2,6 +2,7 @@ import importlib
 import json
 import sys
 import types
+import torch
 
 
 # Create a stub whisperx module so ``transcribe`` can be imported without the
@@ -43,8 +44,9 @@ def test_forwards_options(tmp_path):
             }
             return {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello"}]}
 
-    def load_model(model, language, compute_type):
+    def load_model(model, device, language, compute_type):
         calls["load_model"] = {
+            "device": device,
             "language": language,
             "compute_type": compute_type,
         }
@@ -77,7 +79,9 @@ def test_forwards_options(tmp_path):
         beam_size=2,
     )
 
+    expected_device = "cuda" if torch.cuda.is_available() else "cpu"
     assert calls["load_model"] == {
+        "device": expected_device,
         "language": "en",
         "compute_type": "float16",
     }

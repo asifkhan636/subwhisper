@@ -77,6 +77,10 @@ class SubtitleExperiment:
         self.logger = logging.getLogger(__name__)
         self.results: List[Dict[str, Any]] = []
 
+        # MLflow configuration (optional)
+        self._mlflow = None
+        self.mlflow_cfg = self.config.get("mlflow")
+
     # ------------------------------------------------------------------
     def run(self) -> None:
         """Execute preprocessing, transcription, formatting and QC."""
@@ -87,6 +91,39 @@ class SubtitleExperiment:
         fmt_cfg = self.config.get("format", {})
         corrections_path = self.config.get("corrections")
         references = self.config.get("references", {})
+
+        # ------------------------------------------------------------------
+        # Optional MLflow setup
+        if self.mlflow_cfg:
+            try:  # pragma: no cover - import guard tested separately
+                import mlflow
+            except ImportError as exc:  # pragma: no cover - tested
+                raise RuntimeError(
+                    "MLflow logging requested but mlflow is not installed. "
+                    "Install mlflow or disable the 'mlflow' configuration."
+                ) from exc
+
+            self._mlflow = mlflow
+            tracking_uri = self.mlflow_cfg.get("tracking_uri")
+            experiment_name = self.mlflow_cfg.get("experiment_name")
+            if tracking_uri:
+                mlflow.set_tracking_uri(tracking_uri)
+            if experiment_name:
+                mlflow.set_experiment(experiment_name)
+            mlflow.start_run(run_name=self.run_id)
+
+            def _flatten(data: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+                flat: Dict[str, Any] = {}
+                for k, v in data.items():
+                    key = f"{prefix}.{k}" if prefix else k
+                    if isinstance(v, dict):
+                        flat.update(_flatten(v, key))
+                    else:
+                        flat[key] = v
+                return flat
+
+            params = {k: str(v) for k, v in _flatten(self.config).items()}
+            mlflow.log_params(params)
 
         # persist configuration for traceability
         (self.run_dir / f"config_{self.run_id}.json").write_text(
@@ -102,7 +139,7 @@ class SubtitleExperiment:
                     "Failed to load corrections %s: %s", corrections_path, exc
                 )
 
-        for src in inputs:
+        for idx, src in enumerate(inputs, 1):
             src_path = Path(src)
             work_dir = self.run_dir / src_path.stem
             work_dir.mkdir(parents=True, exist_ok=True)
@@ -146,10 +183,18 @@ class SubtitleExperiment:
             metrics["file"] = str(src)
             self.results.append(metrics)
 
+            if self._mlflow:
+                numeric = {k: v for k, v in metrics.items() if isinstance(v, (int, float))}
+                if numeric:
+                    self._mlflow.log_metrics(numeric, step=idx)
+
         # log metrics for all processed files
         (self.run_dir / f"metrics_{self.run_id}.json").write_text(
             json.dumps(self.results, indent=2), encoding="utf-8"
         )
+
+        if self._mlflow:
+            self._mlflow.end_run()
 
     # ------------------------------------------------------------------
     def aggregate_results(self) -> Dict[str, Any]:

@@ -70,24 +70,11 @@ def enforce_limits(
 
     max_ms = int(max_duration * 1000)
     gap_ms = int(min_gap * 1000)
+    cps_limit = 17
 
-    # First, wrap the text of each event and clip overly long durations.
-    for ev in subs.events:
-        lines = textwrap.wrap(ev.plaintext, width=max_chars)
-        if len(lines) > max_lines:
-            lines = lines[:max_lines]
-        ev.text = "\\N".join(lines)
-        if ev.end - ev.start > max_ms:
-            logger.debug(
-                "Trimming duration of event at %.2fs from %.2fs to %.2fs",
-                ev.start / 1000,
-                (ev.end - ev.start) / 1000,
-                max_ms / 1000,
-            )
-            ev.end = ev.start + max_ms
-
-    # Then enforce minimum gaps and re-check durations. Merge events that
-    # would end up empty after shifting for the gap.
+    # First enforce minimum gaps by shifting start times. When shifting would
+    # invalidate an event (start >= end), keep the latter half of the event
+    # after the required gap.
     i = 1
     while i < len(subs.events):
         prev = subs.events[i - 1]
@@ -99,37 +86,62 @@ def enforce_limits(
                 curr.start / 1000,
                 (required_start - curr.start) / 1000,
             )
+            original_start = curr.start
+            original_end = curr.end
             curr.start = required_start
             if curr.start >= curr.end:
-                logger.debug(
-                    "Merging event at %.2fs with previous due to overlap",
-                    curr.start / 1000,
-                )
-                prev.text = prev.plaintext + "\\N" + curr.plaintext
-                prev.end = max(prev.end, curr.end)
-                subs.events.pop(i)
-                lines = textwrap.wrap(prev.plaintext, width=max_chars)
-                if len(lines) > max_lines:
-                    lines = lines[:max_lines]
-                prev.text = "\\N".join(lines)
-                if prev.end - prev.start > max_ms:
-                    logger.debug(
-                        "Trimming duration of merged event at %.2fs from %.2fs to %.2fs",
-                        prev.start / 1000,
-                        (prev.end - prev.start) / 1000,
-                        max_ms / 1000,
-                    )
-                    prev.end = prev.start + max_ms
+                mid = (original_start + original_end) // 2
+                duration = original_end - mid
+                curr.start = required_start
+                curr.end = required_start + duration
+        i += 1
+
+    # Next, split events that violate CPS or maximum duration limits.
+    i = 0
+    while i < len(subs.events):
+        ev = subs.events[i]
+        duration = ev.end - ev.start
+        dur_sec = duration / 1000 if duration > 0 else 0.001
+        cps = len(ev.plaintext) / dur_sec
+        ev.event_cps = cps
+        if duration > max_ms or cps > cps_limit:
+            text = ev.plaintext
+            if not text:
+                i += 1
                 continue
-        if curr.end - curr.start > max_ms:
+            mid_time = ev.start + duration // 2
+            mid_index = len(text) // 2
+            split_idx = text.rfind(" ", 0, mid_index)
+            if split_idx == -1:
+                split_idx = text.find(" ", mid_index)
+            if split_idx == -1:
+                split_idx = mid_index
+            left = text[:split_idx].strip()
+            right = text[split_idx:].strip()
+            ev1 = pysubs2.SSAEvent(start=ev.start, end=mid_time, text=left)
+            ev2 = pysubs2.SSAEvent(start=mid_time, end=ev.end, text=right)
+            subs.events[i] = ev1
+            subs.events.insert(i + 1, ev2)
+            continue
+        i += 1
+
+    # Finally, wrap text and clamp line counts and durations.
+    for ev in subs.events:
+        if ev.end - ev.start > max_ms:
             logger.debug(
                 "Trimming duration of event at %.2fs from %.2fs to %.2fs",
-                curr.start / 1000,
-                (curr.end - curr.start) / 1000,
+                ev.start / 1000,
+                (ev.end - ev.start) / 1000,
                 max_ms / 1000,
             )
-            curr.end = curr.start + max_ms
-        i += 1
+            ev.end = ev.start + max_ms
+        lines = textwrap.wrap(ev.plaintext, width=max_chars)
+        if len(lines) > max_lines:
+            lines = lines[:max_lines]
+        ev.text = "\\N".join(lines)
+        duration = ev.end - ev.start
+        dur_sec = duration / 1000 if duration > 0 else 0.001
+        ev.event_cps = len(ev.plaintext) / dur_sec
 
     return subs
 

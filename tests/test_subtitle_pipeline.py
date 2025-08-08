@@ -34,7 +34,7 @@ def _write_segments(tmp_path, segments):
 
 
 def test_enforce_limits_line_split_and_duration(tmp_path):
-    segs = [{"start": 0.0, "end": 10.0, "text": "hello world it's me"}]
+    segs = [{"start": 0.0, "end": 2.0, "text": "hello world it's me"}]
     seg_path = _write_segments(tmp_path, segs)
     subs = load_segments(seg_path)
     enforce_limits(subs, max_chars=5, max_lines=2, max_duration=2.0, min_gap=0.0)
@@ -57,7 +57,7 @@ def test_apply_corrections(tmp_path):
 
 def test_pipeline_skips_music_and_enforces_limits(tmp_path):
     segments = [
-        {"start": 0.0, "end": 10.0, "text": "hello world it's me"},
+        {"start": 0.0, "end": 2.0, "text": "hello world it's me"},
         {"start": 2.2, "end": 4.0, "text": "teh cat"},
         {"start": 4.0, "end": 5.0, "text": "\u266a\u266a", "is_music": True},
     ]

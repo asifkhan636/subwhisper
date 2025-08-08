@@ -97,6 +97,42 @@ python -m pytorch_lightning.utilities.upgrade_checkpoint /path/to/pytorch_model.
 This converts the checkpoint to the latest format so it can be loaded without
 warnings.
 
+## Docker
+
+The repository includes a simple Docker setup for running the FastAPI service.
+
+### Build the image
+
+```bash
+docker build -t subwhisper .
+```
+
+### Run with Docker
+
+```bash
+docker run -p 8000:8000 \
+    -v "$(pwd)/input:/data/input" \
+    -v "$(pwd)/output:/data/output" \
+    subwhisper
+```
+
+### Using docker-compose
+
+```bash
+docker-compose up --build
+```
+
+Input media should be placed under the mounted `input` directory and results
+will be written under `output`. When submitting jobs to the API, reference paths
+inside the container (e.g. `/data/input/video.mp4` and set `output_root` to
+`/data/output`).
+
+### CPU and GPU variants
+
+The provided `Dockerfile` installs the CPU build of PyTorch. To leverage GPU
+hardware, swap the base image for a CUDA-enabled PyTorch image and run the
+container with `--gpus all` or an equivalent Docker Compose configuration.
+
 ## Phase-1: Audio Preprocessing
 
 `preproc.py` prepares audio for transcription by extracting a mono 16 kHz track

@@ -239,3 +239,25 @@ def test_cli_spellcheck_flag(tmp_path, monkeypatch):
 
     transcribe.main()
 
+
+def test_transcribe_without_beam_size(tmp_path, caplog):
+    """``transcribe_and_align`` handles models without ``beam_size``."""
+
+    calls = {}
+
+    class DummyModel:
+        def transcribe(self, audio, batch_size, language):
+            calls["transcribe"] = {"batch_size": batch_size, "language": language}
+            return {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello"}]}
+
+    stub.load_model = lambda model, device, language, compute_type: DummyModel()
+    stub.load_audio = lambda path: "audio"
+    stub.load_align_model = lambda **k: ("align", "meta")
+    stub.align = lambda segs, align_model, metadata, audio, batch_size: {"segments": segs}
+
+    with caplog.at_level("INFO"):
+        transcribe.transcribe_and_align("dummy.wav", str(tmp_path), beam_size=2)
+
+    assert calls["transcribe"] == {"batch_size": 8, "language": "en"}
+    assert "beam_size" in caplog.text
+

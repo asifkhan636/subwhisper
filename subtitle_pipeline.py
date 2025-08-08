@@ -220,7 +220,7 @@ def main() -> None:  # pragma: no cover - CLI entry point
     parser.add_argument(
         "--max-chars",
         type=int,
-        default=42,
+        default=45,
         help="Maximum characters per line",
     )
     parser.add_argument(
@@ -238,7 +238,7 @@ def main() -> None:  # pragma: no cover - CLI entry point
     parser.add_argument(
         "--min-gap",
         type=float,
-        default=0.0,
+        default=0.15,
         help="Minimum gap between events in seconds",
     )
     parser.add_argument(

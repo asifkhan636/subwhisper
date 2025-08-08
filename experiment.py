@@ -192,13 +192,13 @@ class SubtitleExperiment:
                 )
 
                 subs = load_segments(Path(segments_path))
-                enforce_limits(
-                    subs,
-                    fmt_cfg.get("max_chars", 42),
-                    fmt_cfg.get("max_lines", 2),
-                    fmt_cfg.get("max_duration", 6.0),
-                    fmt_cfg.get("min_gap", 0.1),
-                )
+                limits = {
+                    "max_chars": fmt_cfg.get("max_chars", 45),
+                    "max_lines": fmt_cfg.get("max_lines", 2),
+                    "max_duration": fmt_cfg.get("max_duration", 6.0),
+                    "min_gap": fmt_cfg.get("min_gap", 0.15),
+                }
+                enforce_limits(subs, **limits)
 
                 if rules:
                     for ev in subs.events:

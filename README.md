@@ -418,7 +418,7 @@ The CLI exposes a number of switches for customising behaviour:
 - `--output-format`: subtitle format (`srt` or `vtt`, default `srt`)
 - `--output-dir`: directory where subtitle files are written; relative paths
   under the input directory are preserved
-- `--max-line-width`: maximum characters per subtitle line (default: `42`)
+- `--max-line-width`: maximum characters per subtitle line (default: `45`)
 - `--max-lines`: maximum lines per subtitle (default: `2`)
 - `--case`: normalise subtitle text casing (`lower` or `upper`)
 - `--strip-punctuation`: remove punctuation from subtitle text

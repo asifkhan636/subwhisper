@@ -256,8 +256,12 @@ def test_transcribe_without_beam_size(tmp_path, caplog):
     stub.align = lambda segs, align_model, metadata, audio, batch_size: {"segments": segs}
 
     with caplog.at_level("INFO"):
-        transcribe.transcribe_and_align("dummy.wav", str(tmp_path), beam_size=2)
+        outpath = transcribe.transcribe_and_align("dummy.wav", str(tmp_path), beam_size=2)
 
+    assert outpath == str(tmp_path / "segments.json")
     assert calls["transcribe"] == {"batch_size": 8, "language": "en"}
+    assert json.loads(tmp_path.joinpath("segments.json").read_text()) == [
+        {"start": 0.0, "end": 1.0, "text": "Hello", "words": []}
+    ]
     assert "beam_size" in caplog.text
 

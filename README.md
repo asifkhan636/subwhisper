@@ -35,7 +35,7 @@ apply changes.
 ## Installation Prerequisites
 
 The script relies on a few external tools and Python packages. It has been
-tested with `whisperx>=3.4.2`, `torch>=2.5`, and `pyannote.audio>=3.3`.
+tested with `whisperx>=3.4.2`, `torch==1.13.1`, and `pyannote.audio==2.1.1`.
 On startup, `generateSubtitles.py` checks that these minimum versions are
 installed and provides guidance if outdated releases are detected. WhisperX
 3.4.x does not support the `vad_filter` argument; to apply VAD you must either
@@ -48,7 +48,7 @@ transcription.
 - **Python**: 3.9 or newer
 - **Conda**: for managing the environment
 - **FFmpeg**: used for audio extraction
-- **Python packages**: `torch>=2.5`, `pyannote.audio>=3.3`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, `librosa>=0.10`, `noisereduce>=3.0`
+- **Python packages**: `torch==1.13.1`, `pyannote.audio==2.1.1`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, `librosa>=0.10`, `noisereduce>=3.0`
 
 ### Create a Conda Environment
 
@@ -59,16 +59,22 @@ conda env create -f environment.yml
 conda activate subwhisper
 ```
 
-This installs Python, `torch>=2.5`, `pyannote.audio>=3.3`,
+This installs Python, `torch==1.13.1`, `pyannote.audio==2.1.1`,
 `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, and other dependencies. The `torch`
 entry is CPU‑only by default; edit `environment.yml` to choose a CUDA‑enabled
 build or add optional packages.
 
+> **Note:** The pretrained Pyannote diarization model currently requires
+> `torch==1.13.1` and `pyannote.audio==2.1.1`. Using mismatched versions may
+> trigger runtime warnings or failures, so ensure your environment matches
+> these versions when relying on the pretrained model.
+
 #### Upgrading dependencies
 
 If you need newer features from `pyannote.audio`, `torch`, or `speechbrain`,
-run `pip install --upgrade torch pyannote.audio speechbrain` and ensure that
-you download models compatible with the new versions. Refer to the respective
+check model compatibility before upgrading. Installing versions that differ
+from the pinned ones above can lead to runtime warnings or failures unless you
+also obtain pretrained models built for those releases. Refer to the respective
 project documentation for migration notes.
 
 If you prefer to configure things manually:
@@ -78,7 +84,7 @@ conda create -n subwhisper python=3.10
 conda activate subwhisper
 
 # Install dependencies
- pip install "torch>=2.5" "pyannote.audio>=3.3" "speechbrain>=1.0" "whisperx>=3.4.2,<4"
+ pip install "torch==1.13.1" "pyannote.audio==2.1.1" "speechbrain>=1.0" "whisperx>=3.4.2,<4"
 # Install ffmpeg (choose one of the following)
 conda install -c conda-forge ffmpeg    # via conda
 # or

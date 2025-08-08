@@ -36,10 +36,23 @@ def _setup_stub(align_func):
     def load_model(model, device, language, compute_type):
         return DummyModel()
 
+    calls = {}
+
     stub.load_model = load_model
     stub.load_audio = lambda path: "audio"
-    stub.load_align_model = lambda **k: ("align", "meta")
+
+    def load_align_model(model_name, language_code, device):
+        calls["load_align_model"] = {
+            "model_name": model_name,
+            "language_code": language_code,
+            "device": device,
+        }
+        return ("align", "meta")
+
+    stub.load_align_model = load_align_model
     stub.align = align_func
+
+    return calls
 
 
 def test_forwards_options(tmp_path):
@@ -124,13 +137,20 @@ def test_mark_music(tmp_path):
         ]
         return {"segments": [aligned]}
 
-    _setup_stub(align_func)
+    calls = _setup_stub(align_func)
 
     outpath = transcribe.transcribe_and_align(
         "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=False
     )
     data = json.loads(tmp_path.joinpath("transcript.json").read_text())
     simple = json.loads(tmp_path.joinpath("segments.json").read_text())
+
+    expected_device = "cuda" if torch.cuda.is_available() else "cpu"
+    assert calls["load_align_model"] == {
+        "model_name": transcribe.ALIGN_MODEL_NAME,
+        "language_code": "en",
+        "device": expected_device,
+    }
 
     assert len(data["segments"]) == 2
     assert data["segments"][0]["is_music"] is True
@@ -154,13 +174,20 @@ def test_skip_music(tmp_path):
         ]
         return {"segments": [aligned]}
 
-    _setup_stub(align_func)
+    calls = _setup_stub(align_func)
 
     outpath = transcribe.transcribe_and_align(
         "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=True
     )
     data = json.loads(tmp_path.joinpath("transcript.json").read_text())
     simple = json.loads(tmp_path.joinpath("segments.json").read_text())
+
+    expected_device = "cuda" if torch.cuda.is_available() else "cpu"
+    assert calls["load_align_model"] == {
+        "model_name": transcribe.ALIGN_MODEL_NAME,
+        "language_code": "en",
+        "device": expected_device,
+    }
 
     assert len(data["segments"]) == 1
     assert data["segments"][0]["is_music"] is False
@@ -254,14 +281,30 @@ def test_transcribe_without_beam_size(tmp_path, caplog):
 
     stub.load_model = lambda model, device, language, compute_type: DummyModel()
     stub.load_audio = lambda path: "audio"
-    stub.load_align_model = lambda **k: ("align", "meta")
+
+    def load_align_model(model_name, language_code, device):
+        calls["load_align_model"] = {
+            "model_name": model_name,
+            "language_code": language_code,
+            "device": device,
+        }
+        return ("align", "meta")
+
+    stub.load_align_model = load_align_model
     stub.align = lambda segs, align_model, metadata, audio, batch_size: {"segments": segs}
 
     with caplog.at_level("INFO"):
         outpath = transcribe.transcribe_and_align("dummy.wav", str(tmp_path), beam_size=2)
 
+    expected_device = "cuda" if torch.cuda.is_available() else "cpu"
+
     assert outpath == str(tmp_path / "segments.json")
     assert calls["transcribe"] == {"batch_size": 8, "language": "en"}
+    assert calls["load_align_model"] == {
+        "model_name": transcribe.ALIGN_MODEL_NAME,
+        "language_code": "en",
+        "device": expected_device,
+    }
     assert json.loads(tmp_path.joinpath("segments.json").read_text()) == [
         {"start": 0.0, "end": 1.0, "text": "Hello", "words": []}
     ]

@@ -76,6 +76,7 @@ class SubtitleExperiment:
 
         self.logger = logging.getLogger(__name__)
         self.results: List[Dict[str, Any]] = []
+        self.failures: List[Dict[str, Any]] = []
 
         # MLflow configuration (optional)
         self._mlflow = None
@@ -130,6 +131,7 @@ class SubtitleExperiment:
             json.dumps(self.config, indent=2), encoding="utf-8"
         )
 
+        self.failures = []
         rules = None
         if corrections_path:
             try:
@@ -140,58 +142,85 @@ class SubtitleExperiment:
                 )
 
         for idx, src in enumerate(inputs, 1):
-            src_path = Path(src)
-            work_dir = self.run_dir / src_path.stem
-            work_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                src_path = Path(src)
+                work_dir = self.run_dir / src_path.stem
+                work_dir.mkdir(parents=True, exist_ok=True)
 
-            audio_path, music_segments = preprocess_pipeline(
-                src, str(work_dir), **pre_cfg
-            )
+                audio_path, music_segments = preprocess_pipeline(
+                    src, str(work_dir), **pre_cfg
+                )
 
-            trans_dir = work_dir / "transcript"
-            trans_dir.mkdir(exist_ok=True)
-            segments_path = transcribe_and_align(
-                audio_path,
-                str(trans_dir),
-                music_segments=music_segments,
-                **tr_cfg,
-            )
+                trans_dir = work_dir / "transcript"
+                trans_dir.mkdir(exist_ok=True)
+                segments_path = transcribe_and_align(
+                    audio_path,
+                    str(trans_dir),
+                    music_segments=music_segments,
+                    **tr_cfg,
+                )
 
-            subs = load_segments(Path(segments_path))
-            enforce_limits(
-                subs,
-                fmt_cfg.get("max_chars", 42),
-                fmt_cfg.get("max_lines", 2),
-                fmt_cfg.get("max_duration", 6.0),
-                fmt_cfg.get("min_gap", 0.1),
-            )
+                subs = load_segments(Path(segments_path))
+                enforce_limits(
+                    subs,
+                    fmt_cfg.get("max_chars", 42),
+                    fmt_cfg.get("max_lines", 2),
+                    fmt_cfg.get("max_duration", 6.0),
+                    fmt_cfg.get("min_gap", 0.1),
+                )
 
-            if rules:
-                for ev in subs.events:
-                    ev.text = apply_corrections(ev.text, rules)
+                if rules:
+                    for ev in subs.events:
+                        ev.text = apply_corrections(ev.text, rules)
 
-            srt_path = work_dir / f"{src_path.stem}_{self.run_id}.srt"
-            write_outputs(subs, srt_path, None)
+                srt_path = work_dir / f"{src_path.stem}_{self.run_id}.srt"
+                write_outputs(subs, srt_path, None)
 
-            metrics = qc.collect_metrics(str(srt_path))
-            ref_path = references.get(src_path.stem)
-            if ref_path:
-                metrics["wer"] = qc.compute_wer(str(srt_path), ref_path)
+                metrics = qc.collect_metrics(str(srt_path))
+                ref_path = references.get(src_path.stem)
+                if ref_path:
+                    metrics["wer"] = qc.compute_wer(str(srt_path), ref_path)
 
-            sync_metrics = qc.validate_sync(str(srt_path), audio_path)
-            metrics.update({f"sync_{k}": v for k, v in sync_metrics.items()})
-            metrics["file"] = str(src)
-            self.results.append(metrics)
+                sync_metrics = qc.validate_sync(str(srt_path), audio_path)
+                metrics.update({f"sync_{k}": v for k, v in sync_metrics.items()})
+                metrics["file"] = str(src)
+                metrics["status"] = "success"
+                self.results.append(metrics)
 
-            if self._mlflow:
-                numeric = {k: v for k, v in metrics.items() if isinstance(v, (int, float))}
-                if numeric:
-                    self._mlflow.log_metrics(numeric, step=idx)
+                if self._mlflow:
+                    numeric = {
+                        k: v for k, v in metrics.items() if isinstance(v, (int, float))
+                    }
+                    if numeric:
+                        self._mlflow.log_metrics(numeric, step=idx)
+            except Exception as exc:  # pragma: no cover - defensive
+                self.logger.error("Failed processing %s: %s", src, exc)
+                err = {"file": str(src), "error": str(exc)}
+                self.failures.append(err)
+                self.results.append({"file": str(src), "status": "failed", **err})
 
         # log metrics for all processed files
         (self.run_dir / f"metrics_{self.run_id}.json").write_text(
             json.dumps(self.results, indent=2), encoding="utf-8"
         )
+
+        if self.failures:
+            failed_path = Path("failed.csv")
+            write_header = not failed_path.exists()
+            with failed_path.open("a", newline="", encoding="utf-8") as fh:
+                fieldnames = ["run_id", "file", "config", "error"]
+                writer = csv.DictWriter(fh, fieldnames=fieldnames)
+                if write_header:
+                    writer.writeheader()
+                for item in self.failures:
+                    writer.writerow(
+                        {
+                            "run_id": self.run_id,
+                            "file": item["file"],
+                            "config": json.dumps(self.config, sort_keys=True),
+                            "error": item["error"],
+                        }
+                    )
 
         if self._mlflow:
             self._mlflow.end_run()
@@ -232,6 +261,8 @@ class SubtitleExperiment:
                 writer.writeheader()
             writer.writerow(row)
 
+        self._write_summary_markdown()
+
         return summary
 
     # ------------------------------------------------------------------
@@ -257,3 +288,62 @@ class SubtitleExperiment:
             metrics_path.write_text(json.dumps(self.results, indent=2), encoding="utf-8")
             if hasattr(self, "summary"):
                 summary_path.write_text(json.dumps(self.summary, indent=2), encoding="utf-8")
+
+    # ------------------------------------------------------------------
+    def _best_params_table(self) -> List[Dict[str, Any]]:
+        path = Path("experiments.csv")
+        if not path.exists():
+            return []
+        with path.open("r", encoding="utf-8") as fh:
+            reader = csv.DictReader(fh)
+            rows = list(reader)
+            fieldnames = reader.fieldnames or []
+        metrics = [f for f in fieldnames if f not in {"run_id", "config"}]
+        table: List[Dict[str, Any]] = []
+        for metric in metrics:
+            vals = [r for r in rows if r.get(metric)]
+            if not vals:
+                continue
+            try:
+                best = min(vals, key=lambda r: float(r[metric]))
+            except ValueError:  # pragma: no cover - non-numeric
+                continue
+            table.append(
+                {
+                    "metric": metric,
+                    "run_id": best["run_id"],
+                    "value": best[metric],
+                    "config": best["config"],
+                }
+            )
+        return table
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _make_md_table(rows: List[Dict[str, Any]]) -> str:
+        if not rows:
+            return ""
+        headers = list(rows[0].keys())
+        lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+        for row in rows:
+            lines.append("| " + " | ".join(str(row.get(h, "")) for h in headers) + " |")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    def _write_summary_markdown(self) -> None:
+        summary_file = self.run_dir / "summary.md"
+        lines = [f"# Summary for {self.run_id}", ""]
+        if self.results:
+            lines.append("## Metrics")
+            lines.append(self._make_md_table(self.results))
+            lines.append("")
+        if hasattr(self, "summary") and self.summary:
+            lines.append("## Aggregate Metrics")
+            lines.append(self._make_md_table([self.summary]))
+            lines.append("")
+        best = self._best_params_table()
+        if best:
+            lines.append("## Best Parameter Sets")
+            lines.append(self._make_md_table(best))
+            lines.append("")
+        summary_file.write_text("\n".join(lines), encoding="utf-8")

@@ -56,6 +56,7 @@ def collect_metrics(srt_path: str) -> Dict[str, Any]:
 
     durations: list[float] = []
     line_counts: list[int] = []
+    cps_values: list[float] = []
     warnings: list[str] = []
 
     for i, event in enumerate(subs, start=1):
@@ -63,6 +64,11 @@ def collect_metrics(srt_path: str) -> Dict[str, Any]:
         durations.append(duration)
 
         line_counts.append(len(event.plaintext.splitlines()))
+
+        # Compute characters per second using non-space characters
+        char_count = len(re.sub(r"\s+", "", event.plaintext))
+        cps = char_count / duration if duration > 0 else 0.0
+        cps_values.append(cps)
 
         if duration < 0.5:
             warnings.append(f"subtitle {i} very short ({duration:.2f}s)")
@@ -73,6 +79,11 @@ def collect_metrics(srt_path: str) -> Dict[str, Any]:
         "subtitle_count": len(subs),
         "avg_duration": statistics.mean(durations) if durations else 0.0,
         "avg_lines": statistics.mean(line_counts) if line_counts else 0.0,
+        "avg_cps": statistics.mean(cps_values) if cps_values else 0.0,
+        "pct_cps_gt_17":
+            (sum(1 for c in cps_values if c > 17) / len(cps_values) * 100)
+            if cps_values
+            else 0.0,
         "warnings": warnings,
     }
 

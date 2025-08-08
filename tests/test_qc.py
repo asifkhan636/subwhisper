@@ -43,6 +43,8 @@ def test_collect_metrics(tmp_path):
     assert metrics["subtitle_count"] == 2
     assert metrics["avg_duration"] == pytest.approx(1.5)
     assert metrics["avg_lines"] == pytest.approx(1.5)
+    assert metrics["avg_cps"] == pytest.approx(7.75)
+    assert metrics["pct_cps_gt_17"] == pytest.approx(0.0)
     assert metrics["warnings"] == []
 
 

@@ -2,6 +2,12 @@
 
 Human review can improve subtitle accuracy. This guide shows how to fetch generated subtitles, apply corrections, and submit the results back to the service.
 
+If the API runs inside a container, mount input media under `/data/input` and
+write results to `/data/output`. Refer to these paths in any payloads passed to
+the service. The default Docker image is CPU-only and omits optional alignment
+packages like `aeneas`; perform sync checks only if those dependencies are
+installed (e.g., run `qc.py --no-sync` otherwise).
+
 ## Retrieve Subtitles
 
 1. Identify the `run_id` of the transcription job.

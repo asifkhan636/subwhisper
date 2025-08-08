@@ -34,14 +34,13 @@ apply changes.
 
 ## Installation Prerequisites
 
-The script relies on a few external tools and Python packages. It has been
+The scripts rely on a few external tools and Python packages. They have been
 tested with `whisperx>=3.4.2`, `torch==1.13.1`, and `pyannote.audio==2.1.1`.
-On startup, `generateSubtitles.py` checks that these minimum versions are
-installed and provides guidance if outdated releases are detected. WhisperX
-3.4.x does not support the `vad_filter` argument; to apply VAD you must either
-upgrade to a release that implements it or run VAD separately with
-`whisperx.load_vad_model` / `whisperx.detect_voice_activity` before
-transcription.
+If your environment is missing these minimum versions, the CLI utilities will
+report the issue on startup. WhisperX 3.4.x does not support the `vad_filter`
+argument; to apply VAD you must either upgrade to a release that implements it
+or run VAD separately with `whisperx.load_vad_model` /
+`whisperx.detect_voice_activity` before transcription.
 
 ### Version compatibility
 
@@ -144,9 +143,9 @@ docker-compose up --build
 ```
 
 Input media should be placed under the mounted `input` directory and results
-will be written under `output`. When submitting jobs to the API, reference paths
-inside the container (e.g. `/data/input/video.mp4` and set `output_root` to
-`/data/output`).
+will be written under `output`. When submitting jobs to the API or running an
+experiment, reference container paths (e.g. `/data/input/video.mp4` and set
+`output_root` to `/data/output`).
 
 ### CPU and GPU variants
 
@@ -162,6 +161,10 @@ docker run --gpus all subwhisper-cuda
 Using `--gpus all` enables Docker's GPU passthrough so the container can run
 CUDA workloads. A similar flag can be added to your Docker Compose
 configuration if preferred.
+
+The image omits optional alignment dependencies such as `aeneas`. Install them
+manually if you need sync validation (`qc.py --sync`) or invoke `qc.py --no-sync`
+to skip those checks.
 
 ## Phase-1: Audio Preprocessing
 
@@ -254,7 +257,22 @@ python transcribe.py preproc/normalized.wav --outdir transcript \
   ]
   ```
 
-### Full Phase 1 → Phase 2 example
+## Phase-3: Subtitle Formatting
+
+`subtitle_pipeline.py` converts the aligned segments from Phase 2 into subtitle
+and transcript files.
+
+### CLI usage
+
+```bash
+python subtitle_pipeline.py --segments transcript/segments.json --output subtitles.srt --transcript
+```
+
+`--segments` points to the `segments.json` file produced in Phase 2. Use
+`--output` to choose the subtitle file path and add `--transcript` to write a
+plain-text transcript alongside it.
+
+### Full pipeline example
 
 ```bash
 # Phase 1: extract, clean, and detect music
@@ -264,6 +282,9 @@ python preproc.py --input video.mp4 --denoise --normalize --outdir preproc
 python transcribe.py preproc/normalized.wav --outdir transcript \
     --music-segments preproc/music_segments.json \
     --device cuda
+
+# Phase 3: format subtitles
+python subtitle_pipeline.py --segments transcript/segments.json --output subs/video.srt --transcript
 ```
 
 ## Phase-4: Validation & Benchmarking
@@ -289,9 +310,10 @@ score in the range `0.0–1.0`.
 python qc.py subs/episode1.srt --audio audio/episode1.wav --sync
 ```
 
-The command runs a forced‑alignment check (requires `aeneas` and
+The command runs a forced‑alignment check (requires optional `aeneas` and
 `pysubs2`) and reports offsets such as `mean_offset`, `median_offset`, and
-`max_offset` in seconds.
+`max_offset` in seconds. These packages are not installed in the CPU-only
+Docker image; pass `--no-sync` to skip this step when they are missing.
 
 ### Batch validation
 
@@ -302,136 +324,6 @@ python qc.py subs/ -r refs/ -a audio/ --recursive --json qc/results.json --csv q
 Processes all subtitle files under `subs/`, matching reference transcripts
 and audio by filename. Per‑file metrics are printed to the console and the
 aggregated results are written to JSON and CSV files.
-
-## Usage
-
-Activate the `subwhisper` conda environment before running any commands.
-
-1. Place the videos you want to process in a directory.
-2. Run `generateSubtitles.py`, pointing it at the directory:
-
-```bash
-python generateSubtitles.py /path/to/videos
-```
-
-To inspect the available audio tracks for a video before processing, use:
-
-```bash
-python generateSubtitles.py --list-audio-tracks myvideo.mkv
-```
-
-This prints track indices, language codes and descriptions so you can choose the
-appropriate `--audio-track` value.
-
-Sample command with explicit options:
-
-```bash
-python generateSubtitles.py ./media \
-    --model-size medium \
-    --output-format vtt \
-    --output-dir ./subs \
-    --extensions .mp4 .mkv \
-    --language en
-```
-
-Subtitle files (`.srt` or `.vtt`) will be written alongside the
-corresponding videos by default.  Use `--output-dir` to place them under a
-separate directory while preserving the videos' relative paths.
-
-### Voice activity detection (VAD)
-
-The bundled WhisperX version does not expose VAD through `model.transcribe`.
-If you need to remove silence, either upgrade to a WhisperX release that adds
-the `vad_filter` argument or run a separate VAD pass via
-`whisperx.load_vad_model` and `whisperx.detect_voice_activity`, then
-transcribe only the detected speech segments.
-
-## Usage Examples
-
-### Basic batch processing
-
-```bash
-python generateSubtitles.py ./videos
-```
-
-Processes every supported video in `./videos` with default settings.
-
-### Selecting a specific audio track
-
-```bash
-python generateSubtitles.py ./videos --audio-track 1
-```
-
-Choose a different audio track when a file contains multiple tracks.
-
-### Changing output format
-
-```bash
-python generateSubtitles.py ./videos --output-format vtt
-```
-
-Create WebVTT subtitles instead of the default SRT files.
-
-### Overriding language
-
-```bash
-python generateSubtitles.py ./videos --language es
-```
-
-Force the transcription language (Spanish in this example) when
-auto-detection is unreliable.
-
-### Word timestamps and diarization
-
-```bash
-python generateSubtitles.py ./videos --word-timestamps --diarize
-```
-
-Embed word-level timing and speaker labels for detailed editing or analysis.
-
-### Parallel workers
-
-```bash
-python generateSubtitles.py ./videos --workers 4
-```
-
-Process videos in parallel with four worker processes to reduce total time.
-
-### Writing to a separate directory
-
-```bash
-python generateSubtitles.py ./videos --output-dir subs/
-```
-
-Store the generated subtitle files under the `subs/` directory while
-preserving each video's relative path.
-
-
-## Logging
-
-After each video is processed a summary entry is appended to
-`logs/subtitle_run.json`. The record includes start and end timestamps,
-whether the operation succeeded, and any associated error message. The
-`logs` directory is created automatically if it does not already exist.
-
-## Configurable Options
-
-The CLI exposes a number of switches for customising behaviour:
-
-- `--extensions`: video file extensions to search for (default: `.mp4 .mkv .mov .avi`)
-- `--audio-track`: audio track index to extract. By default the script attempts to
-  auto-detect the spoken-language track; run `--list-audio-tracks` to discover
-  indices or pass an explicit value
-- `--list-audio-tracks VIDEO`: list audio tracks for a single video and exit
-- `--model-size`: Whisper model size to load (e.g., `base`, `large-v2`; default: `large-v2`)
-- `--output-format`: subtitle format (`srt` or `vtt`, default `srt`)
-- `--output-dir`: directory where subtitle files are written; relative paths
-  under the input directory are preserved
-- `--max-line-width`: maximum characters per subtitle line (default: `45`)
-- `--max-lines`: maximum lines per subtitle (default: `2`)
-- `--case`: normalise subtitle text casing (`lower` or `upper`)
-- `--strip-punctuation`: remove punctuation from subtitle text
-- `--language`: override language detection with a code like `en` (default: auto)
 
 ## Maintenance
 

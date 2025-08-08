@@ -17,7 +17,11 @@ in [Apache Airflow](https://airflow.apache.org/).
 4. **Run the DAG**
    Trigger the DAG manually from the Airflow UI or CLI. Provide a JSON
    configuration matching the `SubtitleExperiment` parameters to the run to
-   customize each execution.
+   customize each execution. If tasks run inside containers, mount host
+   directories to `/data/input` and `/data/output` and reference those paths in
+   the configuration (`input_path`, `output_root`). The default Docker image is
+   CPU-only and lacks optional `aeneas` alignment tools; disable sync checks or
+   install the packages if needed.
 
 The DAG will retry failed runs twice and send an email notification if the run
 ultimately fails.

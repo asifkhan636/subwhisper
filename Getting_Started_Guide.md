@@ -37,7 +37,10 @@ Follow these simple steps to make subtitles for your videos.
    conda activate subwhisper
    ```
 
-The environment installs Python, FFmpeg, WhisperX, and other required packages
+The environment installs Python, FFmpeg, WhisperX, and other required packages.
+It also pins `torch` and `pyannote.audio` to versions compatible with the
+pretrained Pyannote VAD model (`torch==1.13.1`, `pyannote.audio==2.1.1`). Using
+different versions may lead to runtime warnings or failures.
 
 ---
 

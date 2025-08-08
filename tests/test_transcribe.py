@@ -2,7 +2,16 @@ import importlib
 import json
 import sys
 import types
+from pathlib import Path
+
+torch_stub = types.SimpleNamespace(
+    cuda=types.SimpleNamespace(is_available=lambda: False)
+)
+sys.modules.setdefault("torch", torch_stub)
 import torch
+
+# Ensure project root is importable
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 # Create a stub whisperx module so ``transcribe`` can be imported without the
@@ -24,7 +33,10 @@ def _setup_stub(align_func):
                 ]
             }
 
-    stub.load_model = lambda *a, **k: DummyModel()
+    def load_model(model, device, language, compute_type):
+        return DummyModel()
+
+    stub.load_model = load_model
     stub.load_audio = lambda path: "audio"
     stub.load_align_model = lambda **k: ("align", "meta")
     stub.align = align_func
@@ -166,6 +178,7 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
         assert kwargs["batch_size"] == 4
         assert kwargs["beam_size"] == 2
         assert kwargs["compute_type"] == "float16"
+        assert kwargs["device"] == "cpu"
         assert kwargs["music_segments"] == [[0.0, 1.0]]
         assert kwargs["spellcheck"] is False
         return str(tmp_path / "segments.json")
@@ -188,6 +201,8 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
         "2",
         "--compute-type",
         "float16",
+        "--device",
+        "cpu",
         "--music-segments",
         str(music_file),
     ]
@@ -200,11 +215,13 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
     assert str(tmp_path / "segments.json") in captured.out
     assert "Model: tiny" in caplog.text
     assert "Batch size: 4" in caplog.text
+    assert "Device: cpu" in caplog.text
 
 
 def test_cli_spellcheck_flag(tmp_path, monkeypatch):
     def fake_transcribe(audio_path, outdir, **kwargs):
         assert kwargs["spellcheck"] is True
+        assert kwargs["device"] == "cpu"
         return str(tmp_path / "segments.json")
 
     monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
@@ -215,6 +232,8 @@ def test_cli_spellcheck_flag(tmp_path, monkeypatch):
         "--outdir",
         str(tmp_path),
         "--spellcheck",
+        "--device",
+        "cpu",
     ]
     monkeypatch.setattr(sys, "argv", argv)
 

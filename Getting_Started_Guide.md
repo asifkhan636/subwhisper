@@ -58,10 +58,11 @@ The environment installs Python, FFmpeg, WhisperX, and other required packages
 
 ## 3. Transcribe the Audio
 
-1. Feed the cleaned audio into WhisperX:
+1. Feed the cleaned audio into WhisperX (use `--device cuda` for a GPU or
+   `--device cpu` if no GPU is available):
 
    ```bash
-   python transcribe.py preproc/normalized.wav --outdir transcript --music-segments preproc/music_segments.json
+   python transcribe.py preproc/normalized.wav --outdir transcript --music-segments preproc/music_segments.json --device cuda
    ```
 
 2. Results:
@@ -75,7 +76,7 @@ For reference, the complete Phase 1→2 pipeline looks like this:
 python preproc.py --input video.mp4 --denoise --normalize --outdir preproc
 
 # Phase 2: transcribe and align
-python transcribe.py preproc/normalized.wav --outdir transcript --music-segments preproc/music_segments.json
+python transcribe.py preproc/normalized.wav --outdir transcript --music-segments preproc/music_segments.json --device cuda
 ```
 
 ---

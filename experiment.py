@@ -6,6 +6,7 @@ import json
 import logging
 import statistics
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -29,23 +30,49 @@ class SubtitleExperiment:
 
     def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
-        self.run_id = config.get("run_id", uuid.uuid4().hex[:8])
-        self.config["run_id"] = self.run_id
+        if "run_id" in config:
+            self.run_id = config["run_id"]
+        else:
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+            self.run_id = f"{ts}-{uuid.uuid4().hex[:8]}"
+            self.config["run_id"] = self.run_id
+
         # Allow experiments to be directed to an alternate root directory.
         output_root = Path(config.get("output_root", "runs"))
         self.run_dir = output_root / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         # log everything to a file under the run directory
-        self.log_file = self.run_dir / "experiment.log"
-        handler = logging.FileHandler(self.log_file)
+        self.log_file = self.run_dir / "run.log"
+
+        class RunIDFilter(logging.Filter):
+            def __init__(self, run_id: str) -> None:
+                super().__init__()
+                self.run_id = run_id
+
+            def filter(self, record: logging.LogRecord) -> bool:  # pragma: no cover - simple
+                record.run_id = self.run_id
+                return True
+
         formatter = logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+            "%(asctime)s [%(levelname)s] %(run_id)s %(name)s: %(message)s",
         )
-        handler.setFormatter(formatter)
+
+        run_filter = RunIDFilter(self.run_id)
+
+        file_handler = logging.FileHandler(self.log_file)
+        file_handler.setFormatter(formatter)
+        file_handler.addFilter(run_filter)
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        console_handler.addFilter(run_filter)
+
         root = logging.getLogger()
         root.setLevel(logging.INFO)
-        root.addHandler(handler)
+        root.handlers.clear()
+        root.addHandler(file_handler)
+        root.addHandler(console_handler)
 
         self.logger = logging.getLogger(__name__)
         self.results: List[Dict[str, Any]] = []
@@ -62,7 +89,7 @@ class SubtitleExperiment:
         references = self.config.get("references", {})
 
         # persist configuration for traceability
-        (self.run_dir / "config.json").write_text(
+        (self.run_dir / f"config_{self.run_id}.json").write_text(
             json.dumps(self.config, indent=2), encoding="utf-8"
         )
 
@@ -106,7 +133,7 @@ class SubtitleExperiment:
                 for ev in subs.events:
                     ev.text = apply_corrections(ev.text, rules)
 
-            srt_path = work_dir / f"{src_path.stem}.srt"
+            srt_path = work_dir / f"{src_path.stem}_{self.run_id}.srt"
             write_outputs(subs, srt_path, None)
 
             metrics = qc.collect_metrics(str(srt_path))
@@ -120,7 +147,7 @@ class SubtitleExperiment:
             self.results.append(metrics)
 
         # log metrics for all processed files
-        (self.run_dir / "metrics.json").write_text(
+        (self.run_dir / f"metrics_{self.run_id}.json").write_text(
             json.dumps(self.results, indent=2), encoding="utf-8"
         )
 
@@ -168,8 +195,8 @@ class SubtitleExperiment:
         if not self.results:
             return
 
-        metrics_path = self.run_dir / f"metrics.{format}"
-        summary_path = self.run_dir / f"summary.{format}"
+        metrics_path = self.run_dir / f"metrics_{self.run_id}.{format}"
+        summary_path = self.run_dir / f"summary_{self.run_id}.{format}"
 
         if format == "csv":
             with metrics_path.open("w", newline="", encoding="utf-8") as fh:

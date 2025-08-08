@@ -56,12 +56,12 @@ def test_run_logging_and_aggregation(tmp_path, monkeypatch):
 
     exp = SubtitleExperiment(cfg)
     run_dir = Path(cfg["output_root"]) / cfg["run_id"]
-    cfg_path = run_dir / "config.json"
+    cfg_path = run_dir / f"config_{cfg['run_id']}.json"
     assert not cfg_path.exists()
 
     exp.run()
 
-    metrics_path = run_dir / "metrics.json"
+    metrics_path = run_dir / f"metrics_{cfg['run_id']}.json"
     assert cfg_path.exists()
     assert metrics_path.exists()
 

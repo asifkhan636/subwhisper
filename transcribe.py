@@ -72,6 +72,39 @@ def _overlaps(seg_start: float, seg_end: float, music_segments: List[Tuple[float
     return False
 
 
+def postprocess_segments(
+    segments: List[dict],
+    min_gap: float = 0.12,
+    max_backoff: float = 0.08,
+) -> List[dict]:
+    """Sort and adjust segments to remove tiny overlaps.
+
+    The function enforces a minimum ``min_gap`` of silence between consecutive
+    segments. When an overlap or too-small gap occurs, it first tries to shift
+    the end of the previous segment backward by at most ``max_backoff`` seconds
+    before moving the start of the current segment forward. Segments are never
+    merged or dropped.
+    """
+
+    if not segments:
+        return segments
+
+    segments.sort(key=lambda s: s["start"])
+    prev = segments[0]
+    for seg in segments[1:]:
+        gap = seg["start"] - prev["end"]
+        if gap < min_gap:
+            needed = min_gap - gap
+            backoff = min(needed, max_backoff, prev["end"] - prev["start"])
+            if backoff > 0:
+                prev["end"] -= backoff
+                gap += backoff
+            if gap < min_gap:
+                seg["start"] = prev["end"] + min_gap
+        prev = seg
+    return segments
+
+
 def transcribe_and_align(
     audio_path: str,
     outdir: str,
@@ -179,6 +212,12 @@ def transcribe_and_align(
             raise
         else:
             aligned_segments = aligned_result["segments"]
+            for seg in aligned_segments:
+                if seg.get("words"):
+                    seg["start"] = seg["words"][0]["start"]
+                    seg["end"] = seg["words"][-1]["end"]
+
+    aligned_segments = postprocess_segments(aligned_segments)
 
     final_segments: List[dict] = []
     aligned_iter = iter(aligned_segments)

@@ -49,6 +49,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import inspect
 from typing import List, Optional, Tuple
 
 import torch
@@ -126,10 +127,14 @@ def transcribe_and_align(
     # versions. Specify ``batch_size`` only in ``transcribe`` and ``align`` calls.
 
     audio = whisperx.load_audio(audio_path)
+    transcribe_kwargs = {"batch_size": batch_size, "language": "en"}
+    sig = inspect.signature(asr_model.transcribe)
+    if "beam_size" in sig.parameters:
+        transcribe_kwargs["beam_size"] = beam_size
+    else:
+        logger.info("ASR model.transcribe does not support 'beam_size'; omitting it.")
     try:
-        result = asr_model.transcribe(
-            audio, batch_size=batch_size, beam_size=beam_size, language="en"
-        )
+        result = asr_model.transcribe(audio, **transcribe_kwargs)
     except Exception as exc:  # pragma: no cover - depends on backend
         logger.error("Transcription failed: %s", exc)
         if "out of memory" in str(exc).lower():

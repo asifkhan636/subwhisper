@@ -145,7 +145,7 @@ def transcribe_and_align(
 
     logger.info("Alignment model: %s", ALIGN_MODEL_NAME)
     align_model, metadata = whisperx.load_align_model(
-        model_name=ALIGN_MODEL_NAME, language_code="en"
+        model_name=ALIGN_MODEL_NAME, language_code="en", device=device
     )
 
     segments = result["segments"]

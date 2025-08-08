@@ -10,6 +10,28 @@ separate voice‑activity detection (VAD) step if you need to trim silence.
 The goal is to provide an easily hackable starting point for automated
 subtitle workflows.
 
+## API Authentication
+
+The accompanying FastAPI server secures its endpoints with simple
+token-based authentication. Tokens and their associated roles are stored in
+an `auth.yaml` file located next to `api.py`:
+
+```yaml
+tokens:
+  my-admin-token: admin
+  read-only-token: viewer
+```
+
+Clients must send the token in the `Authorization` header using the
+`Bearer <token>` scheme. Two roles are recognized:
+
+- `admin` – start runs and submit subtitle reviews.
+- `viewer` – read-only access for status checks, downloads and viewing
+  current subtitles.
+
+Edit `auth.yaml` to add or revoke credentials and restart the server to
+apply changes.
+
 ## Installation Prerequisites
 
 The script relies on a few external tools and Python packages. It has been

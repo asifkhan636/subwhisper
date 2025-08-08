@@ -33,7 +33,7 @@ Command line usage::
 
     python transcribe.py cleaned.wav --outdir transcript \
         --music-segments preproc/music_segments.json \
-        [--model large-v2] [--batch-size 8] [--beam-size 5] \
+        [--model large-v3-turbo] [--batch-size 8] [--beam-size 5] \
         [--compute-type float32]
 """
 
@@ -66,7 +66,7 @@ def _overlaps(seg_start: float, seg_end: float, music_segments: List[Tuple[float
 def transcribe_and_align(
     audio_path: str,
     outdir: str,
-    model: str = "large-v2",
+    model: str = "large-v3-turbo",
     compute_type: str = "float32",
     batch_size: int = 8,
     beam_size: int = 5,
@@ -210,7 +210,7 @@ def main() -> None:
     parser.add_argument(
         "--outdir", required=True, help="Directory for the resulting JSON file"
     )
-    parser.add_argument("--model", default="large-v2", help="Whisper model name")
+    parser.add_argument("--model", default="large-v3-turbo", help="Whisper model name")
     parser.add_argument(
         "--batch-size", type=int, default=8, help="Batch size for processing"
     )

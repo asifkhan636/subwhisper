@@ -1,6 +1,6 @@
 ctranslate2>=4.3
-torch>=2.5
-pyannote.audio>=3.3
+torch==1.13.1  # required for pretrained Pyannote models
+pyannote.audio==2.1.1  # required for pretrained Pyannote models
 pysubs2>=1.8.0
 speechbrain>=1.0
 whisperx>=3.4.2,<4  # use latest WhisperX

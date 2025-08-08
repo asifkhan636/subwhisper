@@ -1,7 +1,11 @@
 # subwhisper – Getting Started Guide
 
-Subwhisper turns videos into subtitle files using the WhisperX speech‑to‑text engine.  
+Subwhisper turns videos into subtitle files using the WhisperX speech‑to‑text engine.
 Follow these simple steps to make subtitles for your videos.
+
+> **Container paths:** When running inside a container or through the API, mount
+> your media under `/data/input` and write results to `/data/output`. Use these
+> paths in any experiment or API configuration.
 
 ---
 
@@ -41,6 +45,11 @@ The environment installs Python, FFmpeg, WhisperX, and other required packages.
 It also pins `torch` and `pyannote.audio` to versions compatible with the
 pretrained Pyannote VAD model (`torch==1.13.1`, `pyannote.audio==2.1.1`). Using
 different versions may lead to runtime warnings or failures.
+
+> A CPU-only Dockerfile is included for container runs. Modify the base image if
+> you need GPU acceleration. Optional sync validation relies on the `aeneas`
+> package, which is not installed by default; run `qc.py --no-sync` unless you
+> add these dependencies.
 
 ---
 
@@ -126,6 +135,8 @@ For a more structured review workflow (fetching, editing, and submitting fixes t
 - If the program says you ran out of GPU memory, try a smaller model size.
 - If Python packages are “missing,” ensure the Conda environment is activated.
 - Check `failed_subtitles.log` for any videos that failed to process
+- `qc.py --sync` requires the optional `aeneas` library; run `qc.py --no-sync` if
+  those dependencies are not available.
 
 ---
 

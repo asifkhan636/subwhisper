@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide outlines the main deployment options for `subwhisper`, covering the API server, Docker usage, Airflow integration, and authentication.
+This guide outlines the main deployment options for `subwhisper`, covering the API server, Docker usage, Airflow integration, and authentication. The CLI workflow consists of `preproc.py`, `transcribe.py`, and `subtitle_pipeline.py`.
 
 ## FastAPI Service
 
@@ -36,7 +36,7 @@ docker run -p 8000:8000 \
     subwhisper
 ```
 
-For multi-container setups use `docker-compose up --build`.
+For multi-container setups use `docker-compose up --build`. Place input media under the mounted `input` directory and results under `output`. API payloads or experiment configs should reference paths inside the container (e.g., `/data/input/video.mp4` and `output_root: /data/output`). The provided Dockerfile builds a CPU-only image and omits optional alignment tools like `aeneas`; install those packages or run `qc.py --no-sync` if you need sync validation.
 
 ## Airflow
 

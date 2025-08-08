@@ -30,15 +30,11 @@ class SubtitleExperiment:
     def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
         self.run_id = config.get("run_id", uuid.uuid4().hex[:8])
+        self.config["run_id"] = self.run_id
         # Allow experiments to be directed to an alternate root directory.
         output_root = Path(config.get("output_root", "runs"))
         self.run_dir = output_root / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
-
-        # persist configuration for traceability
-        (self.run_dir / "config.json").write_text(
-            json.dumps(config, indent=2), encoding="utf-8"
-        )
 
         # log everything to a file under the run directory
         self.log_file = self.run_dir / "experiment.log"
@@ -64,6 +60,11 @@ class SubtitleExperiment:
         fmt_cfg = self.config.get("format", {})
         corrections_path = self.config.get("corrections")
         references = self.config.get("references", {})
+
+        # persist configuration for traceability
+        (self.run_dir / "config.json").write_text(
+            json.dumps(self.config, indent=2), encoding="utf-8"
+        )
 
         rules = None
         if corrections_path:
@@ -118,25 +119,47 @@ class SubtitleExperiment:
             metrics["file"] = str(src)
             self.results.append(metrics)
 
+        # log metrics for all processed files
+        (self.run_dir / "metrics.json").write_text(
+            json.dumps(self.results, indent=2), encoding="utf-8"
+        )
+
     # ------------------------------------------------------------------
     def aggregate_results(self) -> Dict[str, Any]:
         """Aggregate metrics collected from all processed files."""
         summary: Dict[str, Any] = {}
-        if not self.results:
-            return summary
 
-        numeric_keys = set()
-        for res in self.results:
-            for k, v in res.items():
-                if k != "file" and isinstance(v, (int, float)):
-                    numeric_keys.add(k)
+        if self.results:
+            numeric_keys = set()
+            for res in self.results:
+                for k, v in res.items():
+                    if k != "file" and isinstance(v, (int, float)):
+                        numeric_keys.add(k)
 
-        for key in numeric_keys:
-            values = [res[key] for res in self.results if isinstance(res.get(key), (int, float))]
-            if values:
-                summary[f"avg_{key}"] = statistics.mean(values)
+            for key in numeric_keys:
+                values = [
+                    res[key]
+                    for res in self.results
+                    if isinstance(res.get(key), (int, float))
+                ]
+                if values:
+                    summary[f"avg_{key}"] = statistics.mean(values)
 
         self.summary = summary
+
+        experiments_path = Path("experiments.csv")
+        row = {
+            "run_id": self.run_id,
+            "config": json.dumps(self.config, sort_keys=True),
+        }
+        row.update(summary)
+        write_header = not experiments_path.exists()
+        with experiments_path.open("a", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=row.keys())
+            if write_header:
+                writer.writeheader()
+            writer.writerow(row)
+
         return summary
 
     # ------------------------------------------------------------------

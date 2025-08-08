@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import sys
 import types
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -10,6 +11,7 @@ if str(ROOT) not in sys.path:
 
 sys.modules["whisperx"] = types.ModuleType("whisperx")
 from experiment import SubtitleExperiment
+import experiment_runner
 sys.modules.pop("whisperx", None)
 sys.modules.pop("transcribe", None)
 
@@ -152,3 +154,75 @@ def test_failure_tracking_and_rerun(tmp_path, monkeypatch):
     exp_csv = Path("experiments.csv")
     if exp_csv.exists():
         exp_csv.unlink()
+
+
+def test_parameter_sweep_outputs_and_aggregation(tmp_path, monkeypatch):
+    cfg = {
+        "inputs": ["audio.wav"],
+        "output_root": str(tmp_path),
+        "grid": {
+            "transcribe.dummy": [1, 2],
+            "format.max_chars": [10, 20],
+        },
+    }
+    cfg_path = tmp_path / "config.yml"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    def fake_preprocess(src, workdir, **kwargs):
+        return src, []
+
+    def fake_transcribe(audio_path, out_dir, **kwargs):
+        return str(tmp_path / "segments.json")
+
+    class DummySubs:
+        def __init__(self):
+            self.events = []
+
+    def fake_load_segments(path):
+        return DummySubs()
+
+    def fake_enforce(subs, *args, **kwargs):
+        pass
+
+    def fake_write_outputs(subs, srt_path, _):
+        Path(srt_path).write_text("dummy", encoding="utf-8")
+
+    def fake_collect_metrics(path):
+        return {"subtitle_count": 1}
+
+    def fake_validate_sync(path, audio):
+        return {"offset": 0.1}
+
+    monkeypatch.setattr("experiment.preprocess_pipeline", fake_preprocess)
+    monkeypatch.setattr("experiment.transcribe_and_align", fake_transcribe)
+    monkeypatch.setattr("experiment.load_segments", fake_load_segments)
+    monkeypatch.setattr("experiment.enforce_limits", fake_enforce)
+    monkeypatch.setattr("experiment.write_outputs", fake_write_outputs)
+    monkeypatch.setattr("experiment.qc.collect_metrics", fake_collect_metrics)
+    monkeypatch.setattr("experiment.qc.validate_sync", fake_validate_sync)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["experiment_runner.py", str(cfg_path), "--sweep"])
+    experiment_runner.main()
+
+    run_dirs = [p for p in tmp_path.iterdir() if p.is_dir() and p.name.startswith("run")]
+    assert len(run_dirs) == 4
+    for run_dir in run_dirs:
+        run_id = run_dir.name
+        cfg_file = run_dir / f"config_{run_id}.json"
+        metrics_file = run_dir / f"metrics_{run_id}.json"
+        log_file = run_dir / "run.log"
+        assert cfg_file.exists()
+        assert metrics_file.exists()
+        assert log_file.exists()
+        metrics = json.loads(metrics_file.read_text())
+        assert metrics[0]["subtitle_count"] == 1
+
+    exp_csv = tmp_path / "experiments.csv"
+    assert exp_csv.exists()
+    rows = list(csv.DictReader(exp_csv.open()))
+    assert len(rows) == 4
+    run_ids = {d.name for d in run_dirs}
+    for row in rows:
+        assert row["run_id"] in run_ids
+        assert float(row["avg_subtitle_count"]) == 1.0

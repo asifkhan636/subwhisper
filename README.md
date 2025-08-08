@@ -437,6 +437,8 @@ BashOperator(
 - Integrate speaker diarization for multi‑speaker videos
 - Generate word‑level timestamps or translation
 - Parallelise processing across multiple GPUs
+- [Deployment guide](docs/deployment.md) for API, Docker, Airflow and authentication setup
+- [Review workflow](docs/review_workflow.md) describing human-in-the-loop corrections
 
 ## Troubleshooting Tips
 

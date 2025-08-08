@@ -12,3 +12,5 @@ jiwer>=3.0
 pyyaml
 language_tool_python
 aeneas>=1.7.3
+fastapi
+uvicorn

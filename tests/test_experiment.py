@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import sys
 import types
+from typing import Any, Dict
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,8 +37,10 @@ def test_run_logging_and_aggregation(tmp_path, monkeypatch):
     def fake_load_segments(path):
         return DummySubs()
 
-    def fake_enforce(subs, *args, **kwargs):
-        pass
+    called: Dict[str, Any] = {}
+
+    def fake_enforce(subs, **kwargs):
+        called.update(kwargs)
 
     def fake_write_outputs(subs, srt_path, _):
         Path(srt_path).write_text("dummy", encoding="utf-8")
@@ -66,6 +69,13 @@ def test_run_logging_and_aggregation(tmp_path, monkeypatch):
     assert not cfg_path.exists()
 
     exp.run()
+
+    assert called == {
+        "max_chars": 45,
+        "max_lines": 2,
+        "max_duration": 6.0,
+        "min_gap": 0.15,
+    }
 
     metrics_path = run_dir / f"metrics_{cfg['run_id']}.json"
     assert cfg_path.exists()
@@ -119,7 +129,7 @@ def test_failure_tracking_and_rerun(tmp_path, monkeypatch):
     def fake_load_segments(path):
         return DummySubs()
 
-    def fake_enforce(subs, *args, **kwargs):
+    def fake_enforce(subs, **kwargs):
         pass
 
     def fake_write_outputs(subs, srt_path, _):
@@ -187,7 +197,7 @@ def test_parameter_sweep_outputs_and_aggregation(tmp_path, monkeypatch):
     def fake_load_segments(path):
         return DummySubs()
 
-    def fake_enforce(subs, *args, **kwargs):
+    def fake_enforce(subs, **kwargs):
         pass
 
     def fake_write_outputs(subs, srt_path, _):

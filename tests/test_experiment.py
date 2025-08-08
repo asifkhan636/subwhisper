@@ -82,4 +82,73 @@ def test_run_logging_and_aggregation(tmp_path, monkeypatch):
     assert loaded_cfg["run_id"] == cfg["run_id"]
     assert float(rows[0]["avg_subtitle_count"]) == 1
 
+    summary_md = run_dir / "summary.md"
+    assert summary_md.exists()
+    assert "Best Parameter Sets" in summary_md.read_text()
+
     exp_csv.unlink()
+
+
+def test_failure_tracking_and_rerun(tmp_path, monkeypatch):
+    cfg = {
+        "run_id": "failrun",
+        "inputs": ["good.wav", "bad.wav"],
+        "output_root": str(tmp_path),
+    }
+
+    def fake_preprocess(src, workdir, **kwargs):
+        return src, []
+
+    def fake_transcribe(audio_path, out_dir, **kwargs):
+        if Path(audio_path).name == "bad.wav":
+            raise RuntimeError("boom")
+        return str(tmp_path / "segments.json")
+
+    class DummySubs:
+        def __init__(self):
+            self.events = []
+
+    def fake_load_segments(path):
+        return DummySubs()
+
+    def fake_enforce(subs, *args, **kwargs):
+        pass
+
+    def fake_write_outputs(subs, srt_path, _):
+        Path(srt_path).write_text("dummy", encoding="utf-8")
+
+    def fake_collect_metrics(path):
+        return {"subtitle_count": 1}
+
+    def fake_validate_sync(path, audio):
+        return {"offset": 0.2}
+
+    monkeypatch.setattr("experiment.preprocess_pipeline", fake_preprocess)
+    monkeypatch.setattr("experiment.transcribe_and_align", fake_transcribe)
+    monkeypatch.setattr("experiment.load_segments", fake_load_segments)
+    monkeypatch.setattr("experiment.enforce_limits", fake_enforce)
+    monkeypatch.setattr("experiment.write_outputs", fake_write_outputs)
+    monkeypatch.setattr("experiment.qc.collect_metrics", fake_collect_metrics)
+    monkeypatch.setattr("experiment.qc.validate_sync", fake_validate_sync)
+
+    exp = SubtitleExperiment(cfg)
+    exp.run()
+
+    failed_path = Path("failed.csv")
+    assert failed_path.exists()
+    rows = list(csv.DictReader(failed_path.open()))
+    assert rows[0]["file"] == "bad.wav"
+
+    # Patch to succeed on rerun
+    def success_transcribe(audio_path, out_dir, **kwargs):
+        return str(tmp_path / "segments.json")
+
+    monkeypatch.setattr("experiment.transcribe_and_align", success_transcribe)
+    from rerun_failed import main as rerun_main
+
+    rerun_main()
+
+    assert not failed_path.exists()
+    exp_csv = Path("experiments.csv")
+    if exp_csv.exists():
+        exp_csv.unlink()

@@ -3,6 +3,7 @@
 # - Removed unsupported ``batch_size`` argument from ``whisperx.load_model`` to
 #   avoid ``TypeError`` with newer WhisperX versions. ``batch_size`` is now only
 #   passed to ``transcribe`` and ``align``.
+# - Added optional ``device`` parameter with automatic default and CLI flag.
 
 """Utilities for transcribing audio with WhisperX and word-level alignment.
 
@@ -38,7 +39,7 @@ The transcription pipeline writes two JSON files to the output directory:
 Command line usage::
 
     python transcribe.py cleaned.wav --outdir transcript \
-        --music-segments preproc/music_segments.json \
+        --music-segments preproc/music_segments.json --device cuda \
         [--model large-v3-turbo] [--batch-size 8] [--beam-size 5] \
         [--compute-type float32]
 """
@@ -50,6 +51,7 @@ import logging
 import os
 from typing import List, Optional, Tuple
 
+import torch
 import whisperx
 import pysubs2
 
@@ -74,6 +76,7 @@ def transcribe_and_align(
     outdir: str,
     model: str = "large-v3-turbo",
     compute_type: str = "float32",
+    device: Optional[str] = None,
     batch_size: int = 8,
     beam_size: int = 5,
     music_segments: Optional[List[Tuple[float, float]]] = None,
@@ -92,6 +95,9 @@ def transcribe_and_align(
         Whisper model name to use for transcription.
     compute_type:
         Precision for WhisperX (e.g., ``float32`` or ``float16``).
+    device:
+        Torch device on which to run the model. Defaults to ``"cuda"`` if
+        available, otherwise ``"cpu"``.
     batch_size:
         Batch size used for both transcription and alignment.
     beam_size:
@@ -109,8 +115,12 @@ def transcribe_and_align(
     str
         Path to the JSON file containing aligned segments.
     """
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info("Device: %s", device)
+
     asr_model = whisperx.load_model(
-        model, language="en", compute_type=compute_type
+        model, device, language="en", compute_type=compute_type
     )
     # NOTE: ``batch_size`` is not accepted by ``whisperx.load_model`` in current
     # versions. Specify ``batch_size`` only in ``transcribe`` and ``align`` calls.
@@ -219,6 +229,13 @@ def main() -> None:
         "--outdir", required=True, help="Directory for the resulting JSON file"
     )
     parser.add_argument("--model", default="large-v3-turbo", help="Whisper model name")
+    default_device = "cuda" if torch.cuda.is_available() else "cpu"
+    parser.add_argument(
+        "--device",
+        choices=["cuda", "cpu"],
+        default=default_device,
+        help="Device to run the model on",
+    )
     parser.add_argument(
         "--batch-size", type=int, default=8, help="Batch size for processing"
     )
@@ -240,6 +257,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     logger.info("Model: %s", args.model)
     logger.info("Compute type: %s", args.compute_type)
+    logger.info("Device: %s", args.device)
     logger.info("Beam size: %d", args.beam_size)
     logger.info("Batch size: %d", args.batch_size)
     logger.info("Alignment model: %s", ALIGN_MODEL_NAME)
@@ -256,6 +274,7 @@ def main() -> None:
         args.outdir,
         model=args.model,
         compute_type=args.compute_type,
+        device=args.device,
         batch_size=args.batch_size,
         beam_size=args.beam_size,
         music_segments=music_ranges,

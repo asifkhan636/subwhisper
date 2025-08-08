@@ -43,6 +43,21 @@ upgrade to a release that implements it or run VAD separately with
 `whisperx.load_vad_model` / `whisperx.detect_voice_activity` before
 transcription.
 
+### Version compatibility
+
+Pretrained Pyannote VAD models are sensitive to dependency versions. Use the
+exact pins from `requirements.txt` (or `environment.yml`) to avoid runtime
+warnings or failures:
+
+```bash
+pip install -r requirements.txt
+# or
+conda env create -f environment.yml
+```
+
+These files ensure that `torch==1.13.1` and `pyannote.audio==2.1.1` are
+installed.
+
 ### Required Software
 
 - **Python**: 3.9 or newer

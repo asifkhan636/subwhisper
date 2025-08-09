@@ -60,20 +60,18 @@ def collect_metrics(srt_path: str) -> Dict[str, Any]:
     warnings: list[str] = []
 
     for i, event in enumerate(subs, start=1):
-        duration = (event.end - event.start) / 1000.0  # convert ms to seconds
-        durations.append(duration)
+        dur = max(0.001, (event.end - event.start) / 1000.0)
+        durations.append(dur)
 
         line_counts.append(len(event.plaintext.splitlines()))
 
-        # Compute characters per second using non-space characters
-        char_count = len(re.sub(r"\s+", "", event.plaintext))
-        cps = char_count / duration if duration > 0 else 0.0
-        cps_values.append(cps)
+        chars_ns = len(re.sub(r"\s+", "", event.plaintext))
+        cps_values.append(chars_ns / dur)
 
-        if duration < 0.5:
-            warnings.append(f"subtitle {i} very short ({duration:.2f}s)")
-        if duration > 10.0:
-            warnings.append(f"subtitle {i} very long ({duration:.2f}s)")
+        if dur < 0.5:
+            warnings.append(f"subtitle {i} very short ({dur:.2f}s)")
+        if dur > 10.0:
+            warnings.append(f"subtitle {i} very long ({dur:.2f}s)")
 
     metrics: Dict[str, Any] = {
         "subtitle_count": len(subs),

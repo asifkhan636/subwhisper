@@ -21,6 +21,19 @@ bash scripts/smoke_test.sh path/to/video.mkv
 Intermediate artifacts are written to `preproc/` and `transcript/`, the final
 subtitles to `subtitles.srt`, and a QC summary to `qc/summary.json`.
 
+## Usage
+
+### One-shot command
+
+```bash
+python subwhisper_cli.py --input /path/to/video.mkv --device cuda
+```
+
+- Default output is `/path/to/video.srt`.
+- Intermediate files reside in a hidden run directory and are deleted on success (`--clean-intermediates`, enabled by default).
+- Intermediates remain if the pipeline fails.
+- Use `--output-root` to redirect output or pass `--input /path/to/folder` to process an entire folder.
+
 ## API Authentication
 
 The accompanying FastAPI server secures its endpoints with simple

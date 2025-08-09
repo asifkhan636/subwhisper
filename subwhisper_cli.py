@@ -33,7 +33,6 @@ def _process_one(
     output_root: Optional[Path],
     device: str,
     skip_music: bool,
-    no_sync: bool,
     clean_intermediates: bool,
     purge_all_on_success: bool,
     write_transcript_flag: bool,
@@ -127,7 +126,6 @@ def main() -> int:
     p.add_argument("--output-root", help="Root directory for outputs (default: same as input file parent for single-file; for folder, mirrors per file parent)")
     p.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="Device for WhisperX")
     p.add_argument("--skip-music", action="store_true", help="Skip segments overlapping detected music")
-    p.add_argument("--no-sync", action="store_true", help="Skip QC sync checks (handled in experiment flows)")
     p.add_argument(
         "--clean-intermediates",
         action=argparse.BooleanOptionalAction,
@@ -156,7 +154,6 @@ def main() -> int:
                 output_root=output_root,
                 device=args.device,
                 skip_music=args.skip_music,
-                no_sync=args.no_sync,
                 clean_intermediates=clean_intermediates,
                 purge_all_on_success=args.purge_all_on_success,
                 write_transcript_flag=args.write_transcript,
@@ -180,7 +177,6 @@ def main() -> int:
                         output_root=output_root,  # if None, defaults to media.parent
                         device=args.device,
                         skip_music=args.skip_music,
-                        no_sync=args.no_sync,
                         clean_intermediates=clean_intermediates,
                         purge_all_on_success=args.purge_all_on_success,
                         write_transcript_flag=args.write_transcript,

@@ -1,6 +1,9 @@
 import json
 import os
 import subprocess
+import json
+import os
+import subprocess
 import sys
 import types
 import pathlib
@@ -114,3 +117,8 @@ def test_cli_generates_srt(tmp_path):
     )
     assert out_srt.exists()
     assert "hi" in out_srt.read_text(encoding="utf-8")
+    metrics_file = out_srt.with_suffix(".metrics.json")
+    assert metrics_file.exists()
+    metrics = json.loads(metrics_file.read_text())
+    assert metrics["after"]["avg_cps"] <= metrics["before"]["avg_cps"]
+    assert metrics["after"]["pct_cps_gt_17"] <= metrics["before"]["pct_cps_gt_17"]

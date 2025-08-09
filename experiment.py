@@ -192,6 +192,12 @@ class SubtitleExperiment:
                 )
 
                 subs = load_segments(Path(segments_path))
+
+                if rules:
+                    for ev in subs.events:
+                        corrected = apply_corrections(ev.plaintext, rules)
+                        ev.text = corrected.replace("\n", "\\N")
+
                 fmt_limits = {
                     "max_chars": 45,
                     "max_lines": 2,
@@ -200,10 +206,6 @@ class SubtitleExperiment:
                     **fmt_cfg,
                 }
                 enforce_limits(subs, **fmt_limits)
-
-                if rules:
-                    for ev in subs.events:
-                        ev.text = apply_corrections(ev.text, rules)
 
                 srt_path = work_dir / f"{src_path.stem}_{self.run_id}.srt"
                 write_outputs(subs, srt_path, None)

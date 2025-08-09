@@ -105,7 +105,47 @@ def test_preprocess_pipeline_forwards_aggressiveness(monkeypatch, tmp_path):
 
     assert denoise_mock.call_args.kwargs["aggressiveness"] == 0.9
     detect_mock.assert_called_once()
-    assert detect_mock.call_args.args[1] == str(tmp_path)
+    assert detect_mock.call_args.args[1] == str(tmp_path / "music_segments.json")
+
+
+def test_preprocess_pipeline_stem_builds_filenames(monkeypatch, tmp_path):
+    monkeypatch.setattr(preproc.os.path, "isfile", lambda p: True)
+    monkeypatch.setattr(preproc.os, "makedirs", lambda *a, **k: None)
+    monkeypatch.setattr(preproc, "find_english_track", lambda p: 0)
+
+    def fake_extract(src, dst, track):
+        pathlib.Path(dst).touch()
+        return dst
+
+    def fake_denoise(src, dst, aggressiveness):
+        pathlib.Path(dst).touch()
+        return dst
+
+    def fake_normalize(src, dst, enabled=True):
+        pathlib.Path(dst).touch()
+        return dst
+
+    def fake_detect(audio, seg_file, threshold):
+        pathlib.Path(seg_file).touch()
+        return []
+
+    monkeypatch.setattr(preproc, "extract_audio", fake_extract)
+    monkeypatch.setattr(preproc, "denoise_audio", fake_denoise)
+    monkeypatch.setattr(preproc, "normalize_audio", fake_normalize)
+    monkeypatch.setattr(preproc, "detect_music_segments", fake_detect)
+
+    preproc.preprocess_pipeline(
+        input_path="in.mp4",
+        outdir=str(tmp_path),
+        denoise=True,
+        normalize=True,
+        stem="MyEp",
+    )
+
+    assert (tmp_path / "MyEp.audio.wav").is_file()
+    assert (tmp_path / "MyEp.denoised.wav").is_file()
+    assert (tmp_path / "MyEp.normalized.wav").is_file()
+    assert (tmp_path / "MyEp.music_segments.json").is_file()
 
 
 def test_normalize_audio_copy_when_disabled(monkeypatch, tmp_path):
@@ -157,8 +197,9 @@ def test_detect_music_segments_threshold(monkeypatch, tmp_path, threshold, expec
         preproc.librosa, "frames_to_time", lambda idx, sr, hop_length: float(idx)
     )
 
-    segments = preproc.detect_music_segments("dummy.wav", str(tmp_path), threshold)
+    seg_file = tmp_path / "music_segments.json"
+    segments = preproc.detect_music_segments("dummy.wav", str(seg_file), threshold)
 
     assert segments == expected
-    # Ensure JSON file was written in provided directory
-    assert (tmp_path / "music_segments.json").is_file()
+    # Ensure JSON file was written
+    assert seg_file.is_file()

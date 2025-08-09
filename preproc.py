@@ -216,7 +216,7 @@ def normalize_audio(input_wav: str, output_wav: str, enabled: bool = True) -> st
 
 
 def detect_music_segments(
-    audio_path: str, output_path: str, threshold: float = 0.5
+    audio_path: str, segments_file: str, threshold: float = 0.5
 ) -> List[Tuple[float, float]]:
     """Detect likely music segments within an audio file.
 
@@ -224,16 +224,14 @@ def detect_music_segments(
     waveform using :func:`librosa.effects.hpss`. It then computes the
     percussive-to-harmonic energy ratio over short windows and returns the
     start and end times of intervals whose ratio exceeds ``threshold``. All
-    detected segments are also written to ``music_segments.json`` inside
-    ``output_path``.
+    detected segments are also written to ``segments_file``.
 
     Parameters
     ----------
     audio_path: str
         Path to the input audio file.
-    output_path: str
-        Directory where ``music_segments.json`` will be written. The file is
-        created as ``<output_path>/music_segments.json``.
+    segments_file: str
+        Path where ``music_segments.json`` will be written.
     threshold: float, optional
         Minimum percussive-to-harmonic energy ratio to qualify as a music
         segment. Defaults to ``0.5``.
@@ -281,7 +279,6 @@ def detect_music_segments(
             segments.append((start_time, end_time))
 
         logger.info("Detected %s music segments", len(segments))
-        segments_file = os.path.join(output_path, "music_segments.json")
         with open(segments_file, "w", encoding="utf-8") as fh:
             json.dump(segments, fh)
         return segments
@@ -298,11 +295,13 @@ def preprocess_pipeline(
     denoise_aggressiveness: float = 0.85,
     normalize: bool = False,
     music_threshold: float = 0.5,
+    stem: Optional[str] = None,
 ) -> Tuple[str, List[Tuple[float, float]]]:
     """Run the full preprocessing pipeline.
-
+    
     All intermediate files and the resulting ``music_segments.json`` are written
-    to ``outdir``.
+    to ``outdir``. When ``stem`` is provided, filenames are prefixed with
+    ``"<stem>."``.
 
     Parameters
     ----------
@@ -323,6 +322,9 @@ def preprocess_pipeline(
     music_threshold: float, optional
         Threshold passed to :func:`detect_music_segments`. Detected segments are
         saved to ``music_segments.json`` inside ``outdir``.
+    stem: str | None, optional
+        Base name for generated files. When provided, intermediate and output
+        files are prefixed with ``"<stem>."``.
 
     Returns
     -------
@@ -338,20 +340,25 @@ def preprocess_pipeline(
     os.makedirs(outdir, exist_ok=True)
 
     track = track_index if track_index is not None else find_english_track(input_path)
-    raw_audio = os.path.join(outdir, "audio.wav")
+    raw_audio = os.path.join(outdir, f"{stem}.audio.wav" if stem else "audio.wav")
     audio_path = extract_audio(input_path, raw_audio, track)
 
     if denoise:
-        denoised = os.path.join(outdir, "denoised.wav")
+        denoised = os.path.join(outdir, f"{stem}.denoised.wav" if stem else "denoised.wav")
         audio_path = denoise_audio(
             audio_path, denoised, aggressiveness=denoise_aggressiveness
         )
 
     if normalize:
-        normalized = os.path.join(outdir, "normalized.wav")
+        normalized = os.path.join(
+            outdir, f"{stem}.normalized.wav" if stem else "normalized.wav"
+        )
         audio_path = normalize_audio(audio_path, normalized, enabled=True)
 
-    segments = detect_music_segments(audio_path, outdir, threshold=music_threshold)
+    segments_file = os.path.join(
+        outdir, f"{stem}.music_segments.json" if stem else "music_segments.json"
+    )
+    segments = detect_music_segments(audio_path, segments_file, threshold=music_threshold)
 
     return audio_path, segments
 
@@ -399,6 +406,10 @@ def main() -> None:
             "written here"
         ),
     )
+    parser.add_argument(
+        "--stem",
+        help="Base name for generated files",
+    )
 
     args = parser.parse_args()
 
@@ -411,6 +422,7 @@ def main() -> None:
             denoise_aggressiveness=args.denoise_aggressive,
             normalize=args.normalize,
             music_threshold=args.music_threshold,
+            stem=args.stem,
         )
     except Exception as exc:  # pragma: no cover - CLI
         logger.error("%s", exc)

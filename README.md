@@ -10,6 +10,19 @@ separate voice‑activity detection (VAD) step if you need to trim silence.
 The goal is to provide an easily hackable starting point for automated
 subtitle workflows.
 
+## Installation
+
+Install the package from the repository root to expose the `subwhisper-cli`
+command:
+
+```bash
+pip install .
+# or, for development
+pip install -e .
+```
+
+Once installed, `subwhisper-cli` runs the end-to-end subtitle pipeline.
+
 ## Smoke Test
 
 Run a quick end-to-end check on a single video with:
@@ -26,7 +39,7 @@ subtitles to `subtitles.srt`, and a QC summary to `qc/summary.json`.
 ### One-shot command
 
 ```bash
-python subwhisper_cli.py --input /path/to/video.mkv --device cuda
+subwhisper-cli --input /path/to/video.mkv --device cuda
 ```
 
 - Default output is `/path/to/video.srt`.

@@ -30,7 +30,7 @@ python subwhisper_cli.py --input /path/to/video.mkv --device cuda
 ```
 
 - Default output is `/path/to/video.srt`.
-- Intermediate files reside in a hidden run directory and are deleted on success (`--clean-intermediates`, enabled by default).
+- Intermediate files reside in a hidden run directory and are deleted on success (`--clean-intermediates` by default; pass `--no-clean-intermediates` to keep them).
 - Intermediates remain if the pipeline fails.
 - Use `--output-root` to redirect output or pass `--input /path/to/folder` to process an entire folder.
 

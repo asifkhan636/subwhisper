@@ -128,7 +128,12 @@ def main() -> int:
     p.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="Device for WhisperX")
     p.add_argument("--skip-music", action="store_true", help="Skip segments overlapping detected music")
     p.add_argument("--no-sync", action="store_true", help="Skip QC sync checks (handled in experiment flows)")
-    p.add_argument("--clean-intermediates", action="store_true", default=True, help="Delete working dir after success")
+    p.add_argument(
+        "--clean-intermediates",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Delete working dir after success (use --no-clean-intermediates to keep)",
+    )
     p.add_argument("--purge-all-on-success", action="store_true", help="Delete final outputs as well (not recommended)")
     p.add_argument("--write-transcript", action="store_true", help="Also write a plain text transcript")
     p.add_argument("--max-chars", type=int, default=45)
@@ -137,6 +142,8 @@ def main() -> int:
     p.add_argument("--min-gap", type=float, default=0.15)
     p.add_argument("--corrections", help="Path to JSON/YAML corrections file")
     args = p.parse_args()
+
+    clean_intermediates = args.clean_intermediates
 
     input_path = Path(args.input)
     output_root = Path(args.output_root).resolve() if args.output_root else None
@@ -150,7 +157,7 @@ def main() -> int:
                 device=args.device,
                 skip_music=args.skip_music,
                 no_sync=args.no_sync,
-                clean_intermediates=args.clean_intermediates,
+                clean_intermediates=clean_intermediates,
                 purge_all_on_success=args.purge_all_on_success,
                 write_transcript_flag=args.write_transcript,
                 max_chars=args.max_chars,
@@ -174,7 +181,7 @@ def main() -> int:
                         device=args.device,
                         skip_music=args.skip_music,
                         no_sync=args.no_sync,
-                        clean_intermediates=args.clean_intermediates,
+                        clean_intermediates=clean_intermediates,
                         purge_all_on_success=args.purge_all_on_success,
                         write_transcript_flag=args.write_transcript,
                         max_chars=args.max_chars,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -40,6 +41,49 @@ def load_segments(path: Path) -> pysubs2.SSAFile:
     return pysubs2.load_from_whisper(data)
 
 
+def _ns_len(text: str) -> int:
+    """Length of ``text`` excluding all whitespace characters."""
+
+    return len(re.sub(r"\s+", "", text))
+
+
+def _cps(ev: pysubs2.SSAEvent) -> float:
+    """Characters per second based on non-space characters."""
+
+    duration = max(ev.end - ev.start, 1) / 1000
+    return _ns_len(ev.plaintext) / duration
+
+
+def _split_event_textually(ev: pysubs2.SSAEvent) -> tuple[pysubs2.SSAEvent, pysubs2.SSAEvent]:
+    """Split an event in two, allocating time proportional to text length."""
+
+    text = ev.plaintext
+    if not text:
+        mid = (ev.start + ev.end) // 2
+        left = pysubs2.SSAEvent(start=ev.start, end=mid, text="")
+        right = pysubs2.SSAEvent(start=mid, end=ev.end, text="")
+        return left, right
+
+    mid = len(text) // 2
+    split = text.rfind(" ", 0, mid)
+    if split == -1:
+        m = re.search(r"\s", text[mid:])
+        split = mid + m.start() if m else mid
+    left_text = text[:split].strip()
+    right_text = text[split:].strip()
+
+    total_dur = ev.end - ev.start
+    left_len = _ns_len(left_text)
+    right_len = _ns_len(right_text)
+    total_len = left_len + right_len or 1
+    left_dur = int(round(total_dur * left_len / total_len))
+    right_dur = total_dur - left_dur
+
+    ev1 = pysubs2.SSAEvent(start=ev.start, end=ev.start + left_dur, text=left_text)
+    ev2 = pysubs2.SSAEvent(start=ev.start + left_dur, end=ev.end, text=right_text)
+    return ev1, ev2
+
+
 def enforce_limits(
     subs: pysubs2.SSAFile,
     max_chars: int,
@@ -72,76 +116,44 @@ def enforce_limits(
     gap_ms = int(min_gap * 1000)
     cps_limit = 17
 
-    # First enforce minimum gaps by shifting start times. When shifting would
-    # invalidate an event (start >= end), keep the latter half of the event
-    # after the required gap.
+    i = 0
+    while i < len(subs.events):
+        ev = subs.events[i]
+        if (ev.end - ev.start) > max_ms or _cps(ev) > cps_limit:
+            left, right = _split_event_textually(ev)
+            subs.events[i] = left
+            subs.events.insert(i + 1, right)
+            continue
+        i += 1
+
+    for ev in subs.events:
+        if ev.end - ev.start > max_ms:
+            ev.end = ev.start + max_ms
+
     i = 1
     while i < len(subs.events):
         prev = subs.events[i - 1]
         curr = subs.events[i]
         required_start = prev.end + gap_ms
         if curr.start < required_start:
-            logger.debug(
-                "Shifting start of event at %.2fs by %.2fs to enforce gap",
-                curr.start / 1000,
-                (required_start - curr.start) / 1000,
-            )
-            original_start = curr.start
-            original_end = curr.end
-            curr.start = required_start
+            shift = required_start - curr.start
+            duration = curr.end - curr.start
+            curr.start += shift
+            curr.end = curr.start + duration
             if curr.start >= curr.end:
-                mid = (original_start + original_end) // 2
-                duration = original_end - mid
-                curr.start = required_start
-                curr.end = required_start + duration
-        i += 1
-
-    # Next, split events that violate CPS or maximum duration limits.
-    i = 0
-    while i < len(subs.events):
-        ev = subs.events[i]
-        duration = ev.end - ev.start
-        dur_sec = duration / 1000 if duration > 0 else 0.001
-        cps = len(ev.plaintext) / dur_sec
-        ev.event_cps = cps
-        if duration > max_ms or cps > cps_limit:
-            text = ev.plaintext
-            if not text:
+                left, right = _split_event_textually(curr)
+                subs.events[i] = left
+                subs.events.insert(i + 1, right)
                 i += 1
                 continue
-            mid_time = ev.start + duration // 2
-            mid_index = len(text) // 2
-            split_idx = text.rfind(" ", 0, mid_index)
-            if split_idx == -1:
-                split_idx = text.find(" ", mid_index)
-            if split_idx == -1:
-                split_idx = mid_index
-            left = text[:split_idx].strip()
-            right = text[split_idx:].strip()
-            ev1 = pysubs2.SSAEvent(start=ev.start, end=mid_time, text=left)
-            ev2 = pysubs2.SSAEvent(start=mid_time, end=ev.end, text=right)
-            subs.events[i] = ev1
-            subs.events.insert(i + 1, ev2)
-            continue
         i += 1
 
-    # Finally, wrap text and clamp line counts and durations.
     for ev in subs.events:
-        if ev.end - ev.start > max_ms:
-            logger.debug(
-                "Trimming duration of event at %.2fs from %.2fs to %.2fs",
-                ev.start / 1000,
-                (ev.end - ev.start) / 1000,
-                max_ms / 1000,
-            )
-            ev.end = ev.start + max_ms
         lines = textwrap.wrap(ev.plaintext, width=max_chars)
         if len(lines) > max_lines:
             lines = lines[:max_lines]
         ev.text = "\\N".join(lines)
-        duration = ev.end - ev.start
-        dur_sec = duration / 1000 if duration > 0 else 0.001
-        ev.event_cps = len(ev.plaintext) / dur_sec
+        ev.event_cps = _cps(ev)
 
     return subs
 

@@ -26,4 +26,4 @@ dependencies:
       - aeneas>=1.7.3
       - fastapi
       - uvicorn
-      - pysubs2>=1.8.0
+      - pysubs2>=1.8.0  # subtitle parsing support

@@ -234,7 +234,7 @@ def main() -> None:  # pragma: no cover - CLI entry point
     )
     parser.add_argument(
         "--output",
-        required=True,
+        default=None,
         help="Output SRT file (or directory when using --batch-dir)",
     )
     parser.add_argument(
@@ -302,7 +302,7 @@ def main() -> None:  # pragma: no cover - CLI entry point
 
     rules = load_corrections(Path(args.corrections)) if args.corrections else None
 
-    def process_file(seg_path: Path, out_srt: Path) -> None:
+    def process_file(seg_path: Path, out_srt: Path, out_txt: Optional[Path] = None) -> None:
         with seg_path.open("r", encoding="utf-8") as f:
             data: Any = json.load(f)
         if isinstance(data, dict) and "segments" in data:
@@ -344,7 +344,6 @@ def main() -> None:  # pragma: no cover - CLI entry point
         )
         if args.spellcheck:
             spellcheck_lines(subs)
-        out_txt = out_srt.with_suffix(".txt") if args.transcript else None
         write_outputs(subs, out_srt, out_txt)
 
         post_metrics = collect_metrics(str(out_srt))
@@ -374,6 +373,8 @@ def main() -> None:  # pragma: no cover - CLI entry point
         )
 
     if args.batch_dir:
+        if not args.output:
+            parser.error("--output is required when using --batch-dir")
         batch_root = Path(args.batch_dir)
         out_root = Path(args.output)
         for seg_file in batch_root.rglob("segments.json"):
@@ -381,11 +382,15 @@ def main() -> None:  # pragma: no cover - CLI entry point
             dest_dir = out_root / rel.parent
             dest_dir.mkdir(parents=True, exist_ok=True)
             out_srt = dest_dir / (seg_file.stem + ".srt")
-            process_file(seg_file, out_srt)
+            out_txt = out_srt.with_suffix(".txt") if args.transcript else None
+            process_file(seg_file, out_srt, out_txt)
     else:
         if not args.segments:
             parser.error("--segments is required unless --batch-dir is used")
-        process_file(Path(args.segments), Path(args.output))
+        seg_path = Path(args.segments)
+        out_srt = Path(args.output) if args.output else seg_path.with_suffix(".srt")
+        out_txt = out_srt.with_suffix(".txt") if args.transcript else None
+        process_file(seg_path, out_srt, out_txt)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entry point

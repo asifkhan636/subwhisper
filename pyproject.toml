@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subwhisper"
+version = "0.1.0"
+description = "Subtitle generation using WhisperX"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Subwhisper Contributors"}]
+dependencies = [
+    "ctranslate2>=4.3",
+    "torch==1.13.1",
+    "pyannote.audio==2.1.1",
+    "pysubs2>=1.8.0",
+    "speechbrain>=1.0",
+    "whisperx>=3.4.2,<4",
+    "librosa>=0.10",
+    "noisereduce>=3.0",
+    "packaging",
+    "rich",
+    "jiwer>=3.0",
+    "pyyaml",
+    "language_tool_python",
+    "aeneas>=1.7.3",
+    "fastapi",
+    "uvicorn",
+]
+
+[project.scripts]
+"subwhisper-cli" = "subwhisper_cli:main"

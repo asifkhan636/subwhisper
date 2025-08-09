@@ -56,6 +56,7 @@ def _process_one(
         denoise_aggressiveness=0.85,
         normalize=True,
         music_threshold=0.5,
+        stem=media.stem,
     )
 
     # 2) Transcribe+align → write <stem>.transcript.json & <stem>.segments.json in work

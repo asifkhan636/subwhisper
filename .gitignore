@@ -1,0 +1,56 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment / dependency directories
+.env
+.env.*
+.env/
+venv/
+.venv/
+env/
+env*/
+subwhisper_env/
+
+# Audio/video/subtitle/temp outputs
+input/
+output/
+**/temp/
+**/tmp/
+*.wav
+*.srt
+*.txt
+*.json
+*normalized.*
+*denoised.*
+!requirements.txt
+
+# Logs and experiments
+logs/
+*.log
+metrics/
+mlruns/
+experiments/
+runs/
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Editor/OS junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Cache directories
+.cache/
+.whisperx/
+.pyannote/
+.huggingface/

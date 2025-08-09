@@ -98,23 +98,25 @@ def _process_one(
     write_outputs(subs, out_srt, out_txt_path)
 
     # Mark success
-    (work / "SUCCESS").write_text("ok", encoding="utf-8")
+    success_flag = work / "SUCCESS"
+    success_flag.write_text("ok", encoding="utf-8")
 
-    # Cleanup policy
-    if purge_all_on_success:
-        try:
-            out_srt.unlink(missing_ok=True)
-            if out_txt_path:
-                out_txt_path.unlink(missing_ok=True)
-        except Exception:
-            pass
-    if clean_intermediates:
-        # delete the work dir tree
-        import shutil
-        try:
-            shutil.rmtree(work)
-        except Exception:
-            pass
+    # Cleanup policy: only run when success flag exists
+    if success_flag.exists():
+        if purge_all_on_success:
+            try:
+                out_srt.unlink(missing_ok=True)
+                if out_txt_path:
+                    out_txt_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        if clean_intermediates:
+            # delete the work dir tree
+            import shutil
+            try:
+                shutil.rmtree(work)
+            except Exception:
+                pass
 
     return 0
 

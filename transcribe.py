@@ -72,36 +72,28 @@ def _overlaps(seg_start: float, seg_end: float, music_segments: List[Tuple[float
     return False
 
 
-def postprocess_segments(
-    segments: List[dict],
-    min_gap: float = 0.12,
-    max_backoff: float = 0.08,
-) -> List[dict]:
-    """Sort and adjust segments to remove tiny overlaps.
-
-    The function enforces a minimum ``min_gap`` of silence between consecutive
-    segments. When an overlap or too-small gap occurs, it first tries to shift
-    the end of the previous segment backward by at most ``max_backoff`` seconds
-    before moving the start of the current segment forward. Segments are never
-    merged or dropped.
+def _postprocess_segments_inplace(segments, min_gap=0.12, max_backoff=0.08):
     """
-
+    Ensure a small positive gap between consecutive segments by minimally
+    shifting starts forward. If a shift collapses a segment, extend it a tiny
+    amount (bounded). Non-destructive: no merges or deletions. Preserves order.
+    """
     if not segments:
         return segments
-
-    segments.sort(key=lambda s: s["start"])
-    prev = segments[0]
-    for seg in segments[1:]:
-        gap = seg["start"] - prev["end"]
-        if gap < min_gap:
-            needed = min_gap - gap
-            backoff = min(needed, max_backoff, prev["end"] - prev["start"])
-            if backoff > 0:
-                prev["end"] -= backoff
-                gap += backoff
-            if gap < min_gap:
-                seg["start"] = prev["end"] + min_gap
-        prev = seg
+    # Work in original order
+    for i in range(1, len(segments)):
+        prev = segments[i-1]
+        curr = segments[i]
+        # Skip if missing times
+        if ("start" not in prev) or ("end" not in prev) or ("start" not in curr) or ("end" not in curr):
+            continue
+        req_start = prev["end"] + min_gap
+        if curr["start"] < req_start:
+            delta = req_start - curr["start"]
+            curr["start"] += delta
+            if curr["end"] <= curr["start"]:
+                backoff = min(max_backoff, (req_start - curr["end"]) + 0.02)
+                curr["end"] = curr["start"] + max(0.05, backoff)
     return segments
 
 
@@ -212,12 +204,17 @@ def transcribe_and_align(
             raise
         else:
             aligned_segments = aligned_result["segments"]
+            # Preserve original order so we can restore it after smoothing
+            for _idx, _seg in enumerate(aligned_segments):
+                _seg["_i"] = _idx
             for seg in aligned_segments:
                 if seg.get("words"):
                     seg["start"] = seg["words"][0]["start"]
                     seg["end"] = seg["words"][-1]["end"]
 
-    aligned_segments = postprocess_segments(aligned_segments)
+    aligned_segments = _postprocess_segments_inplace(aligned_segments)
+    for _seg in aligned_segments:
+        _seg.pop("_i", None)
 
     final_segments: List[dict] = []
     aligned_iter = iter(aligned_segments)

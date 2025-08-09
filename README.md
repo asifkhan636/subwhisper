@@ -237,7 +237,7 @@ python transcribe.py preproc/normalized.wav --outdir transcript \
   `preproc/normalized.wav`).
 - `--outdir DIR` – directory where `transcript.json` and `segments.json` are
   written.
-- `--model NAME` – Whisper model to load (default `large-v2`).
+- `--model NAME` – Whisper model to load (default `large-v3-turbo`).
 - `--batch-size N` – batch size for both transcription and alignment
   (default `8`).
 - `--beam-size N` – beam search width used during decoding (default `5`).

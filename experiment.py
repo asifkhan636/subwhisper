@@ -217,8 +217,12 @@ class SubtitleExperiment:
                     metrics["wer"] = qc.compute_wer(str(srt_path), ref_path)
 
                 if qc_cfg.get("sync", True):
-                    sync_metrics = qc.validate_sync(str(srt_path), audio_path)
-                    metrics.update({f"sync_{k}": v for k, v in sync_metrics.items()})
+                    try:
+                        sync_metrics = qc.validate_sync(str(srt_path), audio_path)
+                    except ImportError:
+                        metrics["sync_skipped"] = True
+                    else:
+                        metrics.update({f"sync_{k}": v for k, v in sync_metrics.items()})
                 else:
                     metrics["sync_skipped"] = True
                 metrics["file"] = str(src)

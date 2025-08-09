@@ -210,13 +210,17 @@ class SubtitleExperiment:
                 srt_path = work_dir / f"{src_path.stem}_{self.run_id}.srt"
                 write_outputs(subs, srt_path, None)
 
+                qc_cfg = self.config.get("qc", {})
                 metrics = qc.collect_metrics(str(srt_path))
                 ref_path = references.get(src_path.stem)
                 if ref_path:
                     metrics["wer"] = qc.compute_wer(str(srt_path), ref_path)
 
-                sync_metrics = qc.validate_sync(str(srt_path), audio_path)
-                metrics.update({f"sync_{k}": v for k, v in sync_metrics.items()})
+                if qc_cfg.get("sync", True):
+                    sync_metrics = qc.validate_sync(str(srt_path), audio_path)
+                    metrics.update({f"sync_{k}": v for k, v in sync_metrics.items()})
+                else:
+                    metrics["sync_skipped"] = True
                 metrics["file"] = str(src)
                 metrics["status"] = "success"
                 self.results.append(metrics)

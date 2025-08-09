@@ -259,6 +259,11 @@ def main() -> None:
         help="JSON file containing a list of [start, end] music ranges",
     )
     parser.add_argument(
+        "--skip-music",
+        action="store_true",
+        help="Drop segments overlapping music ranges",
+    )
+    parser.add_argument(
         "--spellcheck",
         action="store_true",
         help="Run LanguageTool spell check on output (slow; requires Java)",
@@ -289,6 +294,7 @@ def main() -> None:
         batch_size=args.batch_size,
         beam_size=args.beam_size,
         music_segments=music_ranges,
+        skip_music=args.skip_music,
         spellcheck=args.spellcheck,
     )
     logger.info("JSON output written to %s", outpath)

@@ -10,6 +10,17 @@ separate voice‑activity detection (VAD) step if you need to trim silence.
 The goal is to provide an easily hackable starting point for automated
 subtitle workflows.
 
+## Smoke Test
+
+Run a quick end-to-end check on a single video with:
+
+```bash
+bash scripts/smoke_test.sh path/to/video.mkv
+```
+
+Intermediate artifacts are written to `preproc/` and `transcript/`, the final
+subtitles to `subtitles.srt`, and a QC summary to `qc/summary.json`.
+
 ## API Authentication
 
 The accompanying FastAPI server secures its endpoints with simple

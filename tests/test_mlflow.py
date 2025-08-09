@@ -8,8 +8,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
+sys.modules["whisperx"] = types.ModuleType("whisperx")
+sys.modules["torch"] = types.ModuleType("torch")
+sys.modules["noisereduce"] = types.ModuleType("noisereduce")
 from experiment import SubtitleExperiment
+sys.modules.pop("whisperx", None)
+sys.modules.pop("torch", None)
+sys.modules.pop("noisereduce", None)
+sys.modules.pop("transcribe", None)
 
 
 def _setup_pipeline(monkeypatch, tmp_path: Path) -> None:

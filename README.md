@@ -221,13 +221,15 @@ Additional options:
 ## Phase-2: Transcription & Alignment
 
 `transcribe.py` converts the cleaned audio from Phase 1 into time-aligned
-segments using WhisperX.
+segments using WhisperX. It can also ingest a `music_segments.json` file
+from Phase 1 and, with `--skip-music`, exclude those ranges from the
+transcript.
 
 ### CLI usage
 
 ```bash
 python transcribe.py preproc/normalized.wav --outdir transcript \
-    --music-segments preproc/music_segments.json \
+    --music-segments preproc/music_segments.json --skip-music \
     --device cuda
 ```
 
@@ -246,7 +248,9 @@ python transcribe.py preproc/normalized.wav --outdir transcript \
 - `--device DEVICE` – torch device to run on; defaults to `cuda` when a GPU
   is available, otherwise `cpu`.
 - `--music-segments FILE` – optional JSON file with `[start, end]` pairs from
-  Phase 1 to flag music regions.
+  Phase 1 to flag music regions; combine with `--skip-music` to drop
+  segments overlapping those ranges.
+- `--skip-music` – drop segments overlapping the provided music ranges.
 
 ### Output files
 
@@ -291,7 +295,7 @@ python preproc.py --input video.mp4 --denoise --normalize --outdir preproc
 
 # Phase 2: transcribe and align using the cleaned audio and music ranges
 python transcribe.py preproc/normalized.wav --outdir transcript \
-    --music-segments preproc/music_segments.json \
+    --music-segments preproc/music_segments.json --skip-music \
     --device cuda
 
 # Phase 3: format subtitles

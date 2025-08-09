@@ -14,7 +14,7 @@ from corrections import load_corrections, apply_corrections
 def _resolve_outputs(input_path: Path, output_root: Optional[Path]) -> Tuple[Path, Path, str]:
     stem = input_path.stem
     if output_root:
-        out_dir = output_root
+        out_dir = output_root / stem
     else:
         out_dir = input_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -15,6 +15,11 @@ from corrections import apply_corrections, load_corrections
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MAX_CHARS = 45
+DEFAULT_MAX_LINES = 2
+DEFAULT_MAX_DURATION = 6.0
+DEFAULT_MIN_GAP = 0.15
+
 
 def load_segments(path: Path) -> pysubs2.SSAFile:
     """Load segments from a Whisper JSON output.
@@ -232,25 +237,25 @@ def main() -> None:  # pragma: no cover - CLI entry point
     parser.add_argument(
         "--max-chars",
         type=int,
-        default=45,
+        default=DEFAULT_MAX_CHARS,
         help="Maximum characters per line",
     )
     parser.add_argument(
         "--max-lines",
         type=int,
-        default=2,
+        default=DEFAULT_MAX_LINES,
         help="Maximum number of lines per event",
     )
     parser.add_argument(
         "--max-duration",
         type=float,
-        default=6.0,
+        default=DEFAULT_MAX_DURATION,
         help="Maximum duration for an event in seconds",
     )
     parser.add_argument(
         "--min-gap",
         type=float,
-        default=0.15,
+        default=DEFAULT_MIN_GAP,
         help="Minimum gap between events in seconds",
     )
     parser.add_argument(

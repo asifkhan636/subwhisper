@@ -122,3 +122,19 @@ def test_cli_generates_srt(tmp_path):
     metrics = json.loads(metrics_file.read_text())
     assert metrics["after"]["avg_cps"] <= metrics["before"]["avg_cps"]
     assert metrics["after"]["pct_cps_gt_17"] <= metrics["before"]["pct_cps_gt_17"]
+
+
+def test_cli_default_output_path(tmp_path):
+    segs = [{"start": 0.0, "end": 1.0, "text": "hello"}]
+    seg_path = _write_segments(tmp_path, segs)
+    subprocess.run(
+        ["python", "subtitle_pipeline.py", "--segments", str(seg_path), "--transcript"],
+        check=True,
+        cwd=ROOT,
+    )
+    out_srt = seg_path.with_suffix(".srt")
+    out_txt = seg_path.with_suffix(".txt")
+    assert out_srt.exists()
+    assert out_txt.exists()
+    metrics_file = out_srt.with_suffix(".metrics.json")
+    assert metrics_file.exists()

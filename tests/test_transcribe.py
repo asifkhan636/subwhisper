@@ -310,3 +310,50 @@ def test_transcribe_without_beam_size(tmp_path, caplog):
     ]
     assert "beam_size" in caplog.text
 
+
+def test_transcribe_with_stem(tmp_path):
+    """Output filenames change when ``stem`` is provided."""
+
+    def align_func(segs, align_model, metadata, audio, batch_size):
+        aligned = []
+        for s in segs:
+            seg = s.copy()
+            seg["words"] = [
+                {"start": s["start"], "end": s["end"], "word": s["text"]}
+            ]
+            aligned.append(seg)
+        return {"segments": aligned}
+
+    _setup_stub(align_func)
+
+    outpath = transcribe.transcribe_and_align(
+        "dummy.wav", str(tmp_path), stem="MyEp"
+    )
+
+    assert outpath == str(tmp_path / "MyEp.segments.json")
+    assert json.loads(tmp_path.joinpath("MyEp.transcript.json").read_text())
+    assert json.loads(tmp_path.joinpath("MyEp.segments.json").read_text())
+
+
+def test_cli_stem_flag(tmp_path, monkeypatch, capsys):
+    def fake_transcribe(audio_path, outdir, **kwargs):
+        assert kwargs["stem"] == "MyEp"
+        return str(tmp_path / "MyEp.segments.json")
+
+    monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
+
+    argv = [
+        "transcribe.py",
+        "foo.wav",
+        "--outdir",
+        str(tmp_path),
+        "--stem",
+        "MyEp",
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    transcribe.main()
+    captured = capsys.readouterr()
+
+    assert str(tmp_path / "MyEp.segments.json") in captured.out
+

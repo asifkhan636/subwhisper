@@ -4,6 +4,7 @@
 #   avoid ``TypeError`` with newer WhisperX versions. ``batch_size`` is now only
 #   passed to ``transcribe`` and ``align``.
 # - Added optional ``device`` parameter with automatic default and CLI flag.
+# - Added optional ``stem`` parameter to customize output file names.
 
 """Utilities for transcribing audio with WhisperX and word-level alignment.
 
@@ -11,12 +12,14 @@ The script expects the mono 16 kHz WAV produced by ``preproc.py`` and,
 optionally, a ``music_segments.json`` file containing ``[start, end]`` pairs
 to mark regions with background music.
 
-The transcription pipeline writes two JSON files to the output directory:
+The transcription pipeline writes two JSON files to the output directory. By
+default they are named ``transcript.json`` and ``segments.json`` but a custom
+``--stem`` can prefix the filenames (e.g., ``MyEp.transcript.json``).
 
-``transcript.json``
+``transcript.json`` / ``<stem>.transcript.json``
     The raw WhisperX segments enriched with an ``is_music`` flag.
 
-``segments.json``
+``segments.json`` / ``<stem>.segments.json``
     A simplified representation used by downstream tooling.  It contains a
     list of segments following the schema::
 
@@ -41,7 +44,7 @@ Command line usage::
     python transcribe.py cleaned.wav --outdir transcript \
         --music-segments preproc/music_segments.json --device cuda \
         [--model large-v3-turbo] [--batch-size 8] [--beam-size 5] \
-        [--compute-type float32]
+        [--compute-type float32] [--stem MyEp]
 """
 
 from __future__ import annotations
@@ -85,6 +88,7 @@ def transcribe_and_align(
     music_segments: Optional[List[Tuple[float, float]]] = None,
     skip_music: bool = False,
     spellcheck: bool = False,
+    stem: Optional[str] = None,
 ) -> str:
     """Transcribe ``audio_path`` and align words with WhisperX.
 
@@ -112,6 +116,9 @@ def transcribe_and_align(
         entirely. Otherwise they are kept with ``is_music`` set to ``True``.
     spellcheck:
         Run a LanguageTool spell check on the final segment texts when ``True``.
+    stem:
+        Optional filename stem for output JSON files. When provided, files are
+        named ``<stem>.transcript.json`` and ``<stem>.segments.json``.
 
     Returns
     -------
@@ -197,7 +204,11 @@ def transcribe_and_align(
             final_segments.append(aligned_seg)
 
     os.makedirs(outdir, exist_ok=True)
-    transcript_path = os.path.join(outdir, "transcript.json")
+    transcript_path = (
+        os.path.join(outdir, f"{stem}.transcript.json")
+        if stem
+        else os.path.join(outdir, "transcript.json")
+    )
     with open(transcript_path, "w", encoding="utf-8") as fh:
         json.dump({"segments": final_segments}, fh, ensure_ascii=False, indent=2)
 
@@ -220,7 +231,11 @@ def transcribe_and_align(
         for seg, ev in zip(simple_segments, subs.events):
             seg["text"] = ev.plaintext
 
-    segments_path = os.path.join(outdir, "segments.json")
+    segments_path = (
+        os.path.join(outdir, f"{stem}.segments.json")
+        if stem
+        else os.path.join(outdir, "segments.json")
+    )
     with open(segments_path, "w", encoding="utf-8") as fh:
         json.dump(simple_segments, fh, ensure_ascii=False, indent=2)
     logger.info("Transcription complete. JSON output at %s", segments_path)
@@ -268,6 +283,10 @@ def main() -> None:
         action="store_true",
         help="Run LanguageTool spell check on output (slow; requires Java)",
     )
+    parser.add_argument(
+        "--stem",
+        help="Filename stem for output JSON files",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -279,6 +298,7 @@ def main() -> None:
     logger.info("Alignment model: %s", ALIGN_MODEL_NAME)
     logger.info("Output directory: %s", args.outdir)
     logger.info("Music segments: %s", args.music_segments or "None")
+    logger.info("Filename stem: %s", args.stem or "None")
 
     music_ranges = None
     if args.music_segments:
@@ -296,6 +316,7 @@ def main() -> None:
         music_segments=music_ranges,
         skip_music=args.skip_music,
         spellcheck=args.spellcheck,
+        stem=args.stem,
     )
     logger.info("JSON output written to %s", outpath)
     print(outpath)

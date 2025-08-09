@@ -1,171 +1,130 @@
-# subwhisper – Getting Started Guide
+# Subwhisper – Super Simple Guide
 
-Subwhisper turns videos into subtitle files using the WhisperX speech‑to‑text engine.
-Follow these simple steps to make subtitles for your videos.
-
-> **Container paths:** When running inside a container or through the API, mount
-> your media under `/data/input` and write results to `/data/output`. Use these
-> paths in any experiment or API configuration.
+Subwhisper turns a video into subtitles (SRT) with one command.  
+No deep setup, no extra steps.
 
 ---
 
-## 1. Install the Software
+## 1) Install (once)
 
-### Windows (PowerShell or Anaconda Prompt)
+### Windows (Anaconda Prompt)  
+1) Install Anaconda: https://www.anaconda.com/download  
+2) Open **Anaconda Prompt**  
+3) Run:
+```powershell
+cd path\to\subwhisper
+conda env create -f environment.yml
+conda activate subwhisper
+```
 
-1. Install [Anaconda](https://www.anaconda.com/download), which includes Python and Conda.
-2. Open **Anaconda Prompt**.
-3. Run:
+### macOS / Linux (Terminal)  
+1) Install Miniconda: https://docs.conda.io/en/latest/miniconda.html  
+2) Run:
+```bash
+cd /path/to/subwhisper
+conda env create -f environment.yml
+conda activate subwhisper
+```
 
-   ```powershell
-   cd path\to\subwhisper
-   conda env create -f environment.yml
-   conda activate subwhisper
-   ```
+Tip: If you have a GPU and CUDA set up, you can use `--device cuda` for faster runs.
+Otherwise just use `--device cpu`.
 
-### macOS / Linux (Terminal)
+## 2) One command (the easy way)
 
-1. Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Conda.
-2. Install FFmpeg (audio tools):
-
-   ```bash
-   conda install -c conda-forge ffmpeg
-   # or (Linux)
-   sudo apt-get install ffmpeg
-   ```
-3. Create and activate the project environment:
-
-   ```bash
-   cd /path/to/subwhisper
-   conda env create -f environment.yml
-   conda activate subwhisper
-   ```
-
-The environment installs Python, FFmpeg, WhisperX, and other required packages.
-It also pins `torch` and `pyannote.audio` to versions compatible with the
-pretrained Pyannote VAD model (`torch==1.13.1`, `pyannote.audio==2.1.1`). Using
-different versions may lead to runtime warnings or failures.
-
-> A CPU-only Dockerfile is included for container runs. Modify the base image if
-> you need GPU acceleration. Optional sync validation relies on the `aeneas`
-> package, which is not installed by default; run `qc.py --no-sync` unless you
-> add these dependencies.
-
----
-
-## 2. Prepare Your Video
-
-1. **Use the English audio track.** The tools try to pick the English track automatically
-2. Place your video (e.g., `video.mp4`) in a folder without other large files.
-3. Run the preprocessing script to extract and clean the audio:
-
-   ```bash
-   python preproc.py --input video.mp4 --denoise --denoise-aggressive 0.9 --normalize --outdir preproc
-   ```
-
-   This creates files like `preproc/audio.wav`, `preproc/denoised.wav`, `preproc/normalized.wav`, and `preproc/music_segments.json`
-   *Tip: Removing background music or noise improves accuracy*
-
----
-
-## 3. Transcribe the Audio
-
-1. Feed the cleaned audio into WhisperX (use `--device cuda` for a GPU or
-   `--device cpu` if no GPU is available):
-
-   ```bash
-   python transcribe.py preproc/normalized.wav --outdir transcript --music-segments preproc/music_segments.json --device cuda
-   ```
-
-2. Results:
-   - `transcript/transcript.json`
-   - `transcript/segments.json` (used for subtitle creation)
-
-For reference, the complete Phase 1→2 pipeline looks like this:
+Put your video file in a folder. Then run:
 
 ```bash
-# Phase 1: extract and clean
-python preproc.py --input video.mp4 --denoise --normalize --outdir preproc
-
-# Phase 2: transcribe and align
-python transcribe.py preproc/normalized.wav --outdir transcript --music-segments preproc/music_segments.json --device cuda
+python subwhisper_cli.py --input /path/to/your_video.mp4 --device cpu
 ```
 
----
+That’s it. When it finishes:
 
-## 4. Create Subtitle (SRT) Files
+- ✅ You get `/path/to/your_video.srt` next to your video
+- ✅ A plain, readable subtitle file (SRT) you can open anywhere
+- ✅ All temporary files are cleaned up automatically (on success)
 
-Run the subtitle formatter on the `segments.json` file:
+If anything goes wrong, Subwhisper keeps the temporary files so you (or a friend) can help diagnose the problem.
+
+## 3) Process a whole folder
 
 ```bash
-python subtitle_pipeline.py --segments transcript/segments.json --output subtitles.srt --transcript
+python subwhisper_cli.py --input /path/to/folder --device cpu
 ```
 
-- The `.srt` subtitle file is saved as `subtitles.srt`.
-- A plain-text transcript (`subtitles.txt`) is created when you add `--transcript`.
-- Optional: provide a corrections file to fix common mistakes:
+Subtitles are created for each supported video inside that folder.
 
-  ```bash
-  python subtitle_pipeline.py --segments transcript/segments.json --output subtitles.srt --corrections rules.yml
-  ```
+By default, each `.srt` is saved right next to its video.
 
----
+## 4) Optional: choose a different output folder
 
-## 5. Review and Fix Subtitles (Optional)
-
-### Manual Editing
-Open the generated `.srt` file in any subtitle editor or plain text editor and make changes.
-
-### Automatic Corrections
-Create a JSON or YAML file with “find → replace” rules and apply them:
-
-```python
-from corrections import load_corrections, apply_corrections
-rules = load_corrections(Path("rules.yml"))
-new_text = apply_corrections(old_text, rules)
+```bash
+python subwhisper_cli.py --input /path/to/your_video.mp4 --output-root /path/to/subtitles --device cpu
 ```
 
-For a more structured review workflow (fetching, editing, and submitting fixes through the API), see the project’s review guide
+You’ll get `/path/to/subtitles/your_video.srt`.
+
+## 5) Optional: also create a text transcript
+
+```bash
+python subwhisper_cli.py --input /path/to/your_video.mp4 --write-transcript --device cpu
+```
+
+This creates `your_video.txt` alongside the `.srt`.
+
+## 6) Quick tips
+
+- If your computer has a supported NVIDIA GPU, try `--device cuda` for speed.
+- Cleaner audio → better subtitles. If possible, use the English audio track and reduce loud background music.
+
+## Troubleshooting (short)
+
+- “Command not found” / “module not found”: Make sure you ran `conda activate subwhisper` first.
+- “ffmpeg not found”: Re-run the install steps; ffmpeg comes from the environment.
+- It failed mid-way: That’s okay—temporary files are kept. Re-run the same command, or share the error message.
+
+## For power users (optional)
+
+### Common flags
+
+- `--device {cuda,cpu}` – pick GPU or CPU
+- `--output-root <folder>` – put final files somewhere else
+- `--write-transcript` – also write a .txt transcript
+- `--skip-music` – ignore detected music segments
+
+### Do it step by step
+
+If you prefer the original 3-step flow:
+
+1) Preprocess
+
+```bash
+python preproc.py --input video.mp4 --normalize --outdir preproc
+```
+
+2) Transcribe + align
+
+```bash
+python transcribe.py preproc/normalized.wav --outdir transcript --device cpu
+```
+
+3) Make subtitles
+
+```bash
+python subtitle_pipeline.py --segments transcript/segments.json --output subtitles.srt
+```
+
+Advanced checks (optional): `qc.py` can report timing/reading-speed metrics. The `--sync` option requires extra packages; if you see errors, just skip it.
+
+### (Optional) Docker
+
+If you use Docker, you can run the same one-command script inside a container by mounting your files and calling:
+
+```bash
+python subwhisper_cli.py --input /data/input/your_video.mp4 --device cpu
+```
 
 ---
 
-## 6. Troubleshooting
-
-- Make sure `ffmpeg` is installed and on your path.
-- If the program says you ran out of GPU memory, try a smaller model size.
-- If Python packages are “missing,” ensure the Conda environment is activated.
-- Check `failed_subtitles.log` for any videos that failed to process
-- `qc.py --sync` requires the optional `aeneas` library; run `qc.py --no-sync` if
-  those dependencies are not available.
-
----
-
-## 7. Best Practices for Accuracy
-
-- Always use the English dub or audio track
-- Keep the audio as clean as possible—reduce noise and background music before transcribing
-- Try the workflow on a short test clip before processing long videos.
-
----
-
-## 8. FAQ & Tips
-
-**Q: Where do the subtitles go?**  
-A: Wherever you point the `--output` option. Use a full path if you want a specific folder.
-
-**Q: Can I make WebVTT files instead of SRT?**  
-A: Yes—run `subtitle_pipeline.py` and rename the output to `.vtt`, then open in a converter if needed.
-
-**Q: The words are misspelled. What can I do?**  
-A: Add `--spellcheck` to `subtitle_pipeline.py` or apply corrections with a rules file.
-
-**Q: How can I speed things up?**  
-A: Process one short video at a time until you’re comfortable. Run on a machine with a GPU for faster transcription.
-
-**Q: Where can I ask for help?**  
-A: Check the project’s issue tracker on GitHub or ask in the repository discussions.
-
----
-
-Enjoy creating subtitles with subwhisper!
+You’re done 🎉  
+You now have a `.srt` file you can open in any video player or editor.
 

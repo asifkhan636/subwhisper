@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, Optional
 
 import pysubs2
 import textwrap
 from corrections import apply_corrections, load_corrections
+from qc import collect_metrics
 
 
 logger = logging.getLogger(__name__)
@@ -326,6 +329,12 @@ def main() -> None:  # pragma: no cover - CLI entry point
                     corrections += 1
                     logger.debug("Replaced text: %r -> %r", original, fixed)
                 ev.text = fixed.replace("\n", "\\N")
+
+        with NamedTemporaryFile(suffix=".srt", delete=False) as tmp:
+            subs.save(tmp.name, format_="srt")
+            pre_metrics = collect_metrics(tmp.name)
+        os.unlink(tmp.name)
+
         enforce_limits(
             subs,
             max_chars=args.max_chars,
@@ -337,6 +346,18 @@ def main() -> None:  # pragma: no cover - CLI entry point
             spellcheck_lines(subs)
         out_txt = out_srt.with_suffix(".txt") if args.transcript else None
         write_outputs(subs, out_srt, out_txt)
+
+        post_metrics = collect_metrics(str(out_srt))
+        if (
+            post_metrics["avg_cps"] > pre_metrics["avg_cps"]
+            or post_metrics["pct_cps_gt_17"] > pre_metrics["pct_cps_gt_17"]
+        ):
+            raise ValueError("Formatting increased CPS metrics")
+        metrics_out = out_srt.with_suffix(".metrics.json")
+        metrics_out.write_text(
+            json.dumps({"before": pre_metrics, "after": post_metrics}, indent=2),
+            encoding="utf-8",
+        )
 
         total = len(subs.events)
         avg_lines = (

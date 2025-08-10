@@ -71,7 +71,44 @@ python subwhisper_cli.py --input /path/to/your_video.mp4 --write-transcript --de
 
 This creates `your_video.txt` alongside the `.srt`.
 
-## 6) Quick tips
+## 6) Resume or recompute later
+
+Subwhisper caches progress in `.subwhisper_cache/` so you can skip completed
+work or clean up old runs.
+
+- `--resume {auto,off}` controls whether cached results are reused (`auto`
+  by default).
+- `--force` recomputes everything, ignoring any cache.
+- `--resume-clean DAYS` deletes cache manifests older than `DAYS` days before
+  starting.
+
+Examples:
+
+First run
+
+```bash
+python subwhisper_cli.py --input "…/Season 9" --device cuda
+```
+
+Resume later
+
+```bash
+python subwhisper_cli.py --input "…/Season 9" --resume auto --device cuda
+```
+
+Recompute everything
+
+```bash
+python subwhisper_cli.py --input "…/Season 9" --force
+```
+
+Clean manifests older than 14 days
+
+```bash
+python subwhisper_cli.py --input "…/Season 9" --resume-clean 14
+```
+
+## 7) Quick tips
 
 - If your computer has a supported NVIDIA GPU, try `--device cuda` for speed.
 - Cleaner audio → better subtitles. If possible, use the English audio track and reduce loud background music.
@@ -90,6 +127,10 @@ This creates `your_video.txt` alongside the `.srt`.
 - `--output-root <folder>` – put final files somewhere else
 - `--write-transcript` – also write a .txt transcript
 - `--skip-music` – ignore detected music segments
+- `--resume {auto,off}` – reuse cached results (`auto`, default) or disable
+  resuming
+- `--force` – recompute even if cached outputs exist
+- `--resume-clean DAYS` – remove manifests older than `DAYS` days
 
 ### Do it step by step
 

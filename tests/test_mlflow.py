@@ -22,10 +22,13 @@ def _setup_pipeline(monkeypatch, tmp_path: Path) -> None:
     """Stub heavy dependencies used by ``SubtitleExperiment``."""
 
     def fake_preprocess(src, workdir, **kwargs):
-        return src, []
+        return {"audio_wav": src, "normalized_wav": None, "music_segments": None}
 
     def fake_transcribe(audio_path, out_dir, **kwargs):
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     class DummySubs:
         def __init__(self):

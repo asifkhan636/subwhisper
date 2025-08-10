@@ -89,7 +89,8 @@ def transcribe_and_align(
     skip_music: bool = False,
     spellcheck: bool = False,
     stem: Optional[str] = None,
-) -> str:
+    resume_outputs: Optional[dict] = None,
+) -> dict:
     """Transcribe ``audio_path`` and align words with WhisperX.
 
     Parameters
@@ -119,12 +120,26 @@ def transcribe_and_align(
     stem:
         Optional filename stem for output JSON files. When provided, files are
         named ``<stem>.transcript.json`` and ``<stem>.segments.json``.
+    resume_outputs:
+        Optional mapping of expected output files. When both ``transcript_json``
+        and ``segments_json`` exist, transcription and alignment are skipped and
+        these paths are returned.
 
     Returns
     -------
-    str
-        Path to the JSON file containing aligned segments.
+    dict
+        Mapping containing ``transcript_json`` and ``segments_json`` paths.
     """
+    if resume_outputs and all(
+        resume_outputs.get(k) and os.path.exists(resume_outputs[k])
+        for k in ("transcript_json", "segments_json")
+    ):
+        logger.info("resume: using existing")
+        return {
+            "transcript_json": resume_outputs["transcript_json"],
+            "segments_json": resume_outputs["segments_json"],
+        }
+
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info("Device: %s", device)
@@ -240,7 +255,7 @@ def transcribe_and_align(
         json.dump(simple_segments, fh, ensure_ascii=False, indent=2)
     logger.info("Transcription complete. JSON output at %s", segments_path)
 
-    return segments_path
+    return {"transcript_json": transcript_path, "segments_json": segments_path}
 
 
 def main() -> None:
@@ -305,7 +320,7 @@ def main() -> None:
         with open(args.music_segments, "r", encoding="utf-8") as fh:
             music_ranges = json.load(fh)
 
-    outpath = transcribe_and_align(
+    outputs = transcribe_and_align(
         args.audio_path,
         args.outdir,
         model=args.model,
@@ -318,8 +333,8 @@ def main() -> None:
         spellcheck=args.spellcheck,
         stem=args.stem,
     )
-    logger.info("JSON output written to %s", outpath)
-    print(outpath)
+    logger.info("JSON output written to %s", outputs["segments_json"])
+    print(outputs["segments_json"])
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entry point

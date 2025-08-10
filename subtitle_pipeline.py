@@ -193,7 +193,7 @@ def spellcheck_lines(subs: pysubs2.SSAFile, lang: str = "en-US") -> pysubs2.SSAF
 
 def write_outputs(
     subs: pysubs2.SSAFile, out_srt: Path, out_txt: Optional[Path]
-) -> None:
+) -> dict:
     """Write subtitle collection to ``out_srt`` and optionally ``out_txt``.
 
     Parameters
@@ -205,12 +205,25 @@ def write_outputs(
     out_txt:
         Optional path where plain text lines are written, one per subtitle
         event. When ``None`` the text file is skipped.
+
+    Returns
+    -------
+    dict
+        Mapping with keys ``srt`` and ``txt`` pointing to written files. ``txt``
+        is ``None`` when ``out_txt`` is ``None``.
     """
 
+    out_srt.unlink(missing_ok=True)
     subs.save(out_srt, format_="srt")
+
+    txt_path = None
     if out_txt is not None:
+        out_txt.unlink(missing_ok=True)
         lines = [ev.plaintext for ev in subs.events]
         out_txt.write_text("\n".join(lines), encoding="utf-8")
+        txt_path = str(out_txt)
+
+    return {"srt": str(out_srt), "txt": txt_path}
 
 
 def main() -> None:  # pragma: no cover - CLI entry point

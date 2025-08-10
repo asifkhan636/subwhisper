@@ -296,7 +296,8 @@ def preprocess_pipeline(
     normalize: bool = False,
     music_threshold: float = 0.5,
     stem: Optional[str] = None,
-) -> Tuple[str, List[Tuple[float, float]]]:
+    resume_outputs: Optional[dict] = None,
+) -> dict:
     """Run the full preprocessing pipeline.
     
     All intermediate files and the resulting ``music_segments.json`` are written
@@ -325,12 +326,15 @@ def preprocess_pipeline(
     stem: str | None, optional
         Base name for generated files. When provided, intermediate and output
         files are prefixed with ``"<stem>."``.
+    resume_outputs: dict | None, optional
+        Previously produced outputs. When supplied and the files exist, those
+        outputs are reused and the associated work is skipped.
 
     Returns
     -------
-    tuple
-        A ``(audio_path, segments)`` pair with the final audio file and list of
-        music segments.
+    dict
+        Mapping with keys ``audio_wav``, ``normalized_wav`` and ``music_segments``
+        pointing to their respective file paths.
     """
 
     if not os.path.isfile(input_path):
@@ -339,11 +343,17 @@ def preprocess_pipeline(
 
     os.makedirs(outdir, exist_ok=True)
 
+    outputs: dict = {"audio_wav": None, "normalized_wav": None, "music_segments": None}
+
     track = track_index if track_index is not None else find_english_track(input_path)
     raw_audio = os.path.join(outdir, f"{stem}.audio.wav" if stem else "audio.wav")
-    audio_path = extract_audio(input_path, raw_audio, track)
+    if resume_outputs and resume_outputs.get("audio_wav") and os.path.exists(resume_outputs["audio_wav"]):
+        logger.info("resume: using existing")
+        audio_path = resume_outputs["audio_wav"]
+    else:
+        audio_path = extract_audio(input_path, raw_audio, track)
 
-    if denoise:
+    if denoise and not (resume_outputs and resume_outputs.get("audio_wav") and os.path.exists(resume_outputs.get("audio_wav", ""))):
         denoised = os.path.join(outdir, f"{stem}.denoised.wav" if stem else "denoised.wav")
         audio_path = denoise_audio(
             audio_path, denoised, aggressiveness=denoise_aggressiveness
@@ -353,14 +363,26 @@ def preprocess_pipeline(
         normalized = os.path.join(
             outdir, f"{stem}.normalized.wav" if stem else "normalized.wav"
         )
-        audio_path = normalize_audio(audio_path, normalized, enabled=True)
+        if resume_outputs and resume_outputs.get("normalized_wav") and os.path.exists(resume_outputs["normalized_wav"]):
+            logger.info("resume: using existing")
+            audio_path = resume_outputs["normalized_wav"]
+        else:
+            audio_path = normalize_audio(audio_path, normalized, enabled=True)
+        outputs["normalized_wav"] = audio_path
+
+    outputs["audio_wav"] = audio_path
 
     segments_file = os.path.join(
         outdir, f"{stem}.music_segments.json" if stem else "music_segments.json"
     )
-    segments = detect_music_segments(audio_path, segments_file, threshold=music_threshold)
+    if resume_outputs and resume_outputs.get("music_segments") and os.path.exists(resume_outputs["music_segments"]):
+        logger.info("resume: using existing")
+        outputs["music_segments"] = resume_outputs["music_segments"]
+    else:
+        detect_music_segments(audio_path, segments_file, threshold=music_threshold)
+        outputs["music_segments"] = segments_file
 
-    return audio_path, segments
+    return outputs
 
 
 def main() -> None:

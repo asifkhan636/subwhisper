@@ -96,7 +96,7 @@ def test_forwards_options(tmp_path):
     stub.load_align_model = load_align_model
     stub.align = align
 
-    outpath = transcribe.transcribe_and_align(
+    outputs = transcribe.transcribe_and_align(
         "dummy.wav",
         str(tmp_path),
         model="tiny",
@@ -104,6 +104,7 @@ def test_forwards_options(tmp_path):
         batch_size=4,
         beam_size=2,
     )
+    outpath = outputs["segments_json"]
 
     expected_device = "cuda" if torch.cuda.is_available() else "cpu"
     assert calls["load_model"] == {
@@ -139,7 +140,7 @@ def test_mark_music(tmp_path):
 
     calls = _setup_stub(align_func)
 
-    outpath = transcribe.transcribe_and_align(
+    outputs = transcribe.transcribe_and_align(
         "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=False
     )
     data = json.loads(tmp_path.joinpath("transcript.json").read_text())
@@ -176,7 +177,7 @@ def test_skip_music(tmp_path):
 
     calls = _setup_stub(align_func)
 
-    outpath = transcribe.transcribe_and_align(
+    outputs = transcribe.transcribe_and_align(
         "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=True
     )
     data = json.loads(tmp_path.joinpath("transcript.json").read_text())
@@ -210,7 +211,10 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
         assert kwargs["device"] == "cpu"
         assert kwargs["music_segments"] == [[0.0, 1.0]]
         assert kwargs["spellcheck"] is False
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
 
@@ -251,7 +255,10 @@ def test_cli_spellcheck_flag(tmp_path, monkeypatch):
     def fake_transcribe(audio_path, outdir, **kwargs):
         assert kwargs["spellcheck"] is True
         assert kwargs["device"] == "cpu"
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
 
@@ -294,7 +301,8 @@ def test_transcribe_without_beam_size(tmp_path, caplog):
     stub.align = lambda segs, align_model, metadata, audio, batch_size: {"segments": segs}
 
     with caplog.at_level("INFO"):
-        outpath = transcribe.transcribe_and_align("dummy.wav", str(tmp_path), beam_size=2)
+        outputs = transcribe.transcribe_and_align("dummy.wav", str(tmp_path), beam_size=2)
+        outpath = outputs["segments_json"]
 
     expected_device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -326,11 +334,11 @@ def test_transcribe_with_stem(tmp_path):
 
     _setup_stub(align_func)
 
-    outpath = transcribe.transcribe_and_align(
+    outputs = transcribe.transcribe_and_align(
         "dummy.wav", str(tmp_path), stem="MyEp"
     )
 
-    assert outpath == str(tmp_path / "MyEp.segments.json")
+    assert outputs["segments_json"] == str(tmp_path / "MyEp.segments.json")
     assert json.loads(tmp_path.joinpath("MyEp.transcript.json").read_text())
     assert json.loads(tmp_path.joinpath("MyEp.segments.json").read_text())
 
@@ -338,7 +346,10 @@ def test_transcribe_with_stem(tmp_path):
 def test_cli_stem_flag(tmp_path, monkeypatch, capsys):
     def fake_transcribe(audio_path, outdir, **kwargs):
         assert kwargs["stem"] == "MyEp"
-        return str(tmp_path / "MyEp.segments.json")
+        return {
+            "segments_json": str(tmp_path / "MyEp.segments.json"),
+            "transcript_json": str(tmp_path / "MyEp.transcript.json"),
+        }
 
     monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
 

@@ -47,6 +47,43 @@ subwhisper-cli --input /path/to/video.mkv --device cuda
 - Intermediates remain if the pipeline fails.
 - Use `--output-root` to redirect output or pass `--input /path/to/folder` to process an entire folder.
 
+### Resuming and recomputing
+
+The CLI keeps manifests in `.subwhisper_cache/` to skip work on subsequent
+runs. These options control how manifests are used:
+
+- `--resume {auto,off}` – reuse previous results (`auto`, default) or disable
+  resuming (`off`).
+- `--force` – recompute every stage even if manifests exist.
+- `--resume-clean DAYS` – delete manifests older than `DAYS` days before
+  starting.
+
+Examples:
+
+First run
+
+```bash
+python subwhisper_cli.py --input "…/Season 9" --device cuda
+```
+
+Resume later
+
+```bash
+python subwhisper_cli.py --input "…/Season 9" --resume auto --device cuda
+```
+
+Recompute everything
+
+```bash
+python subwhisper_cli.py --input "…/Season 9" --force
+```
+
+Clean manifests older than 14 days
+
+```bash
+python subwhisper_cli.py --input "…/Season 9" --resume-clean 14
+```
+
 ## API Authentication
 
 The accompanying FastAPI server secures its endpoints with simple

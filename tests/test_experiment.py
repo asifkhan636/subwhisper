@@ -37,10 +37,13 @@ def test_run_logging_and_aggregation(tmp_path, monkeypatch):
     }
 
     def fake_preprocess(src, workdir, **kwargs):
-        return src, []
+        return {"audio_wav": src, "normalized_wav": None, "music_segments": None}
 
     def fake_transcribe(audio_path, out_dir, **kwargs):
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     class DummySubs:
         def __init__(self):
@@ -128,10 +131,13 @@ def test_skip_sync_validation(tmp_path, monkeypatch):
     }
 
     def fake_preprocess(src, workdir, **kwargs):
-        return src, []
+        return {"audio_wav": src, "normalized_wav": None, "music_segments": None}
 
     def fake_transcribe(audio_path, out_dir, **kwargs):
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     class DummySubs:
         def __init__(self):
@@ -176,10 +182,13 @@ def test_sync_validation_import_error(tmp_path, monkeypatch):
     }
 
     def fake_preprocess(src, workdir, **kwargs):
-        return src, []
+        return {"audio_wav": src, "normalized_wav": None, "music_segments": None}
 
     def fake_transcribe(audio_path, out_dir, **kwargs):
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     class DummySubs:
         def __init__(self):
@@ -224,12 +233,15 @@ def test_failure_tracking_and_rerun(tmp_path, monkeypatch):
     }
 
     def fake_preprocess(src, workdir, **kwargs):
-        return src, []
+        return {"audio_wav": src, "normalized_wav": None, "music_segments": None}
 
     def fake_transcribe(audio_path, out_dir, **kwargs):
         if Path(audio_path).name == "bad.wav":
             raise RuntimeError("boom")
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     class DummySubs:
         def __init__(self):
@@ -268,7 +280,10 @@ def test_failure_tracking_and_rerun(tmp_path, monkeypatch):
 
     # Patch to succeed on rerun
     def success_transcribe(audio_path, out_dir, **kwargs):
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     monkeypatch.setattr("experiment.transcribe_and_align", success_transcribe)
     from rerun_failed import main as rerun_main
@@ -294,10 +309,13 @@ def test_parameter_sweep_outputs_and_aggregation(tmp_path, monkeypatch):
     cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
     def fake_preprocess(src, workdir, **kwargs):
-        return src, []
+        return {"audio_wav": src, "normalized_wav": None, "music_segments": None}
 
     def fake_transcribe(audio_path, out_dir, **kwargs):
-        return str(tmp_path / "segments.json")
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
 
     class DummySubs:
         def __init__(self):

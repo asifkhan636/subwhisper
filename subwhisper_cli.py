@@ -1,6 +1,7 @@
 import argparse
 import sys
 import traceback
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
@@ -47,7 +48,7 @@ def _process_one(
 
     # 1) Preprocess → returns path to final audio and music segments
     # We enable normalize by default; denoise optional (off by default here)
-    audio_path, music_segments = preprocess_pipeline(
+    pre_out = preprocess_pipeline(
         input_path=str(media),
         outdir=str(work),
         track_index=None,
@@ -57,10 +58,15 @@ def _process_one(
         music_threshold=0.5,
         stem=media.stem,
     )
+    audio_path = pre_out.get("normalized_wav") or pre_out.get("audio_wav")
+    music_segments = None
+    if pre_out.get("music_segments"):
+        with open(pre_out["music_segments"], "r", encoding="utf-8") as fh:
+            music_segments = json.load(fh)
 
     # 2) Transcribe+align → write <stem>.transcript.json & <stem>.segments.json in work
     stem = media.stem
-    segments_path = transcribe_and_align(
+    trans_out = transcribe_and_align(
         audio_path=audio_path,
         outdir=str(work),
         model="large-v3-turbo",
@@ -76,7 +82,7 @@ def _process_one(
 
     # 3) Format → enforce limits and write SRT/TXT to output folder (default: media.parent)
     out_srt, out_txt, stem = _resolve_outputs(media, output_root)
-    subs = load_segments(Path(segments_path))
+    subs = load_segments(Path(trans_out["segments_json"]))
 
     # Apply corrections first if provided
     if corrections_path and corrections_path.exists():

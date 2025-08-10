@@ -178,20 +178,25 @@ class SubtitleExperiment:
                 work_dir = self.run_dir / src_path.stem
                 work_dir.mkdir(parents=True, exist_ok=True)
 
-                audio_path, music_segments = preprocess_pipeline(
+                pre_out = preprocess_pipeline(
                     src, str(work_dir), **pre_cfg
                 )
+                audio_path = pre_out.get("normalized_wav") or pre_out.get("audio_wav")
+                music_segments = None
+                if pre_out.get("music_segments"):
+                    with open(pre_out["music_segments"], "r", encoding="utf-8") as fh:
+                        music_segments = json.load(fh)
 
                 trans_dir = work_dir / "transcript"
                 trans_dir.mkdir(exist_ok=True)
-                segments_path = transcribe_and_align(
+                trans_out = transcribe_and_align(
                     audio_path,
                     str(trans_dir),
                     music_segments=music_segments,
                     **tr_cfg,
                 )
 
-                subs = load_segments(Path(segments_path))
+                subs = load_segments(Path(trans_out["segments_json"]))
 
                 if rules:
                     for ev in subs.events:

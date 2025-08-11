@@ -8,6 +8,27 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 import pathlib
+import sys
+import types
+
+# Provide stub modules so ``preproc`` imports without heavy dependencies.
+librosa_stub = types.ModuleType("librosa")
+librosa_stub.load = lambda *a, **k: None
+librosa_stub.stream = lambda *a, **k: iter([])
+librosa_stub.effects = types.SimpleNamespace(hpss=lambda y: ([], []))
+librosa_stub.feature = types.SimpleNamespace(rms=lambda *a, **k: np.array([[0]]))
+librosa_stub.frames_to_time = lambda idx, sr, hop_length: float(idx)
+sys.modules.setdefault("librosa", librosa_stub)
+
+sf_stub = types.ModuleType("soundfile")
+sf_stub.read = lambda *a, **k: ([], 16000)
+sf_stub.info = lambda *a, **k: types.SimpleNamespace(samplerate=16000)
+sf_stub.write = lambda *a, **k: None
+sys.modules.setdefault("soundfile", sf_stub)
+
+nr_stub = types.ModuleType("noisereduce")
+nr_stub.reduce_noise = lambda *a, **k: None
+sys.modules.setdefault("noisereduce", nr_stub)
 
 # Ensure repository root on path for importing ``preproc``.
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -129,6 +150,33 @@ def test_preprocess_pipeline_stem_builds_filenames(monkeypatch, tmp_path):
     assert (tmp_path / "MyEp.denoised.wav").is_file()
     assert (tmp_path / "MyEp.normalized.wav").is_file()
     assert (tmp_path / "MyEp.music_segments.json").is_file()
+
+
+def test_preprocess_pipeline_handles_detection_failure(monkeypatch, tmp_path):
+    """A failure in music detection should not abort preprocessing."""
+    monkeypatch.setattr(preproc.os.path, "isfile", lambda p: True)
+    monkeypatch.setattr(preproc.os, "makedirs", lambda *a, **k: None)
+    monkeypatch.setattr(preproc, "find_english_track", lambda p: 0)
+
+    def fake_extract(src, dst, track):
+        pathlib.Path(dst).touch()
+        return dst
+
+    def fake_normalize(src, dst, enabled=True):
+        pathlib.Path(dst).touch()
+        return dst
+
+    monkeypatch.setattr(preproc, "extract_audio", fake_extract)
+    monkeypatch.setattr(preproc, "normalize_audio", fake_normalize)
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(preproc, "detect_music_segments", boom)
+
+    out = preproc.preprocess_pipeline(input_path="in.mp4", outdir=str(tmp_path))
+
+    assert out["music_segments"] is None
 
 
 def test_normalize_audio_copy_when_disabled(monkeypatch, tmp_path):

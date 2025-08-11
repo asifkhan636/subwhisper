@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -42,4 +43,14 @@ def setup_torchaudio_backend() -> None:
         torchaudio.set_audio_backend("soundfile")
     except Exception as exc:  # pragma: no cover - backend may fail
         logger.debug("failed to set torchaudio backend: %s", exc)
+    else:
+        # ``speechbrain.utils.torch_audio_backend`` prints warnings about the
+        # selected backend.  Suppress them since "soundfile" is expected on
+        # Windows.
+        warnings.filterwarnings(
+            "ignore", module="speechbrain.utils.torch_audio_backend"
+        )
+        logging.getLogger(
+            "speechbrain.utils.torch_audio_backend"
+        ).setLevel(logging.ERROR)
 

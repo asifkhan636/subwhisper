@@ -142,8 +142,9 @@ when incompatible versions are detected.
 - **Python packages**: `torch>=2.5.1`, `pyannote.audio>=3.3.2`, `lightning>=2.5.2`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, `librosa>=0.10`, `noisereduce>=3.0`
 
 On Windows, `torchaudio` must use the `soundfile` backend. Subwhisper
-configures this automatically during startup and sets
-`TORCHAUDIO_ENABLE_SOX_IO_BACKEND=0` to silence warnings about the unused
+configures this automatically during startup, suppresses
+`speechbrain.utils.torch_audio_backend` warnings, and sets
+`TORCHAUDIO_ENABLE_SOX_IO_BACKEND=0` to silence messages about the unused
 `sox_io` backend. Ensure the `soundfile` package and its native dependencies
 are installed to avoid import errors.
 

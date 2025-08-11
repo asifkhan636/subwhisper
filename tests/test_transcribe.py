@@ -18,6 +18,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # heavy dependency.
 stub = types.SimpleNamespace()
 sys.modules.setdefault("whisperx", stub)
+sys.modules.setdefault(
+    "pysubs2", types.SimpleNamespace(load_from_whisper=lambda segments: None)
+)
+sys.modules.setdefault(
+    "subtitle_pipeline", types.SimpleNamespace(spellcheck_lines=lambda subs: None)
+)
 transcribe = importlib.import_module("transcribe")
 
 
@@ -25,7 +31,7 @@ def _setup_stub(align_func):
     """Configure ``stub`` with simple whisperx functionality."""
 
     class DummyModel:
-        def transcribe(self, audio, batch_size, beam_size, language):  # noqa: D401
+        def transcribe(self, audio, batch_size, language, beam_size=None):  # noqa: D401
             return {
                 "segments": [
                     {"start": 0.0, "end": 1.0, "text": "Hello"},
@@ -251,6 +257,34 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
     assert "Device: cpu" in caplog.text
 
 
+def test_cli_main_without_beam_size(tmp_path, monkeypatch, capsys):
+    """CLI defaults to ``beam_size=None`` when not provided."""
+
+    def fake_transcribe(audio_path, outdir, **kwargs):
+        assert kwargs["beam_size"] is None
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
+
+    monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
+
+    argv = [
+        "transcribe.py",
+        "foo.wav",
+        "--outdir",
+        str(tmp_path),
+        "--device",
+        "cpu",
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    transcribe.main()
+    captured = capsys.readouterr()
+
+    assert str(tmp_path / "segments.json") in captured.out
+
+
 def test_cli_spellcheck_flag(tmp_path, monkeypatch):
     def fake_transcribe(audio_path, outdir, **kwargs):
         assert kwargs["spellcheck"] is True
@@ -316,7 +350,33 @@ def test_transcribe_without_beam_size(tmp_path, caplog):
     assert json.loads(tmp_path.joinpath("segments.json").read_text()) == [
         {"start": 0.0, "end": 1.0, "text": "Hello", "words": []}
     ]
-    assert "beam_size" in caplog.text
+    assert "beam_size" not in caplog.text
+
+
+def test_transcribe_default_beam_size(tmp_path):
+    """When ``beam_size`` is ``None``, the model's default is used."""
+
+    calls = {}
+
+    class DummyModel:
+        def transcribe(self, audio, batch_size, language, beam_size=None):
+            calls["transcribe"] = {
+                "batch_size": batch_size,
+                "beam_size": beam_size,
+                "language": language,
+            }
+            return {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello"}]}
+
+    stub.load_model = lambda model, device, language, compute_type: DummyModel()
+    stub.load_audio = lambda path: "audio"
+    stub.load_align_model = lambda model_name, language_code, device: ("align", "meta")
+    stub.align = lambda segs, align_model, metadata, audio, batch_size: {"segments": segs}
+
+    outputs = transcribe.transcribe_and_align("dummy.wav", str(tmp_path))
+    outpath = outputs["segments_json"]
+
+    assert outpath == str(tmp_path / "segments.json")
+    assert calls["transcribe"] == {"batch_size": 8, "beam_size": None, "language": "en"}
 
 
 def test_transcribe_with_stem(tmp_path):

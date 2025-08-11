@@ -52,6 +52,7 @@ def _process_one(
     output_root: Optional[Path],
     device: str,
     skip_music: bool,
+    beam_size: Optional[int],
     clean_intermediates: bool,
     purge_all_on_success: bool,
     write_transcript_flag: bool,
@@ -138,9 +139,10 @@ def _process_one(
             "compute_type": "float32",
             "device": device,
             "batch_size": 8,
-            "beam_size": 5,
             "skip_music": skip_music,
         }
+        if beam_size is not None:
+            transcribe_params["beam_size"] = beam_size
         reusable, outputs = (
             is_stage_reusable(media.parent, media.stem, "transcribe", str(media), transcribe_params)
             if allow_resume and downstream_valid
@@ -161,7 +163,7 @@ def _process_one(
                 compute_type="float32",
                 device=device,
                 batch_size=8,
-                beam_size=5,
+                beam_size=beam_size,
                 music_segments=music_segments,
                 skip_music=skip_music,
                 spellcheck=False,
@@ -249,6 +251,12 @@ def main() -> int:
     p.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="Device for WhisperX")
     p.add_argument("--skip-music", action="store_true", help="Skip segments overlapping detected music")
     p.add_argument(
+        "--beam-size",
+        type=int,
+        default=None,
+        help="Beam size for Whisper decoder (default: model default)",
+    )
+    p.add_argument(
         "--clean-intermediates",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -283,6 +291,7 @@ def main() -> int:
                 output_root=output_root,
                 device=args.device,
                 skip_music=args.skip_music,
+                beam_size=args.beam_size,
                 clean_intermediates=clean_intermediates,
                 purge_all_on_success=args.purge_all_on_success,
                 write_transcript_flag=args.write_transcript,
@@ -310,6 +319,7 @@ def main() -> int:
                         output_root=output_root,  # if None, defaults to media.parent
                         device=args.device,
                         skip_music=args.skip_music,
+                        beam_size=args.beam_size,
                         clean_intermediates=clean_intermediates,
                         purge_all_on_success=args.purge_all_on_success,
                         write_transcript_flag=args.write_transcript,

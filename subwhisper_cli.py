@@ -224,6 +224,10 @@ def _process_one(
                 outputs.append(str(out_txt_path))
             stage_complete(media.parent, media.stem, "format", str(media), format_params, outputs)
 
+        logger.info("SRT saved to %s", out_srt)
+        if out_txt_path:
+            logger.info("Transcript saved to %s", out_txt_path)
+
         # Mark success
         success_flag = work / "SUCCESS"
         success_flag.write_text("ok", encoding="utf-8")

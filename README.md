@@ -109,8 +109,9 @@ apply changes.
 ## Installation Prerequisites
 
 The scripts rely on a few external tools and Python packages. They have been
-tested with `whisperx>=3.4.2`, `torch==1.13.1`, and `pyannote.audio>=2.1`.
-If your environment is missing these minimum versions, the CLI utilities will
+tested with `whisperx>=3.4.2`, `torch==1.13.1`, `pyannote.audio>=2.1`, and
+`ctranslate2>=4.4` (older releases depend on `pkg_resources` and may warn with
+newer versions of `setuptools`). If your environment is missing these minimum versions, the CLI utilities will
 report the issue on startup. WhisperX 3.4.x does not support the `vad_filter`
 argument; to apply VAD you must either upgrade to a release that implements it
 or run VAD separately with `whisperx.load_vad_model` /
@@ -129,9 +130,9 @@ pip install -r requirements.txt
 conda env create -f environment.yml
 ```
 
-These files ensure that `torch==1.13.1` and `pyannote.audio>=2.1,<3` are
-installed. The CLI performs a startup check and warns when incompatible
-versions are detected.
+These files ensure that `torch==1.13.1`, `pyannote.audio>=2.1,<3`, and
+`ctranslate2>=4.4` are installed. The CLI performs a startup check and warns
+when incompatible versions are detected.
 
 ### Required Software
 

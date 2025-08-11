@@ -560,17 +560,21 @@ def preprocess_pipeline(
         logger.info("resume: using existing")
         outputs["music_segments"] = resume_outputs["music_segments"]
     else:
-        detect_music_segments(
-            audio_path,
-            segments_file,
-            threshold=music_threshold,
-            min_duration=music_min_duration,
-            min_gap=music_min_gap,
-            count_warning=music_count_warning,
-            enhanced=enhanced_music_detection,
-            speech_threshold=speech_threshold,
-        )
-        outputs["music_segments"] = segments_file
+        try:
+            detect_music_segments(
+                audio_path,
+                segments_file,
+                threshold=music_threshold,
+                min_duration=music_min_duration,
+                min_gap=music_min_gap,
+                count_warning=music_count_warning,
+                enhanced=enhanced_music_detection,
+                speech_threshold=speech_threshold,
+            )
+            outputs["music_segments"] = segments_file
+        except Exception:
+            logger.exception("music detection failed; continuing without filtering")
+            outputs["music_segments"] = None
 
     return outputs
 

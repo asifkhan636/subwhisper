@@ -84,184 +84,193 @@ def _process_one(
 
     acquire_lock(manifest_path)
     try:
-        # Compute source fingerprint and load manifest
-        _ = compute_source_fingerprint(str(media))
-        manifest = load_manifest(media.parent, media.stem)
-        if force or resume == "off":
-            manifest = {}
+        try:
+            # Compute source fingerprint and load manifest
+            _ = compute_source_fingerprint(str(media))
+            manifest = load_manifest(media.parent, media.stem)
+            if force or resume == "off":
+                manifest = {}
 
-        allow_resume = resume != "off" and not force
-        downstream_valid = True
+            allow_resume = resume != "off" and not force
+            downstream_valid = True
 
-        audio_path: Optional[str] = None
-        music_segments = None
+            audio_path: Optional[str] = None
+            music_segments = None
 
-        # Stage: preprocess
-        preproc_params = {
-            "denoise": False,
-            "denoise_aggressiveness": 0.85,
-            "normalize": True,
-            "music_threshold": music_threshold,
-            "music_min_duration": music_min_duration,
-            "music_min_gap": music_min_gap,
-            "music_count_warning": music_count_warning,
-            "enhanced_music_detection": enhanced_music_detection,
-        }
-        reusable, outputs = (
-            is_stage_reusable(media.parent, media.stem, "preproc", str(media), preproc_params)
-            if allow_resume and downstream_valid
-            else (False, [])
-        )
-        if reusable:
-            logger.info("resume: preproc valid; skipping")
-            audio_path = outputs[0]
-            if len(outputs) > 1:
-                try:
-                    with open(outputs[1], "r", encoding="utf-8") as fh:
+            # Stage: preprocess
+            preproc_params = {
+                "denoise": False,
+                "denoise_aggressiveness": 0.85,
+                "normalize": True,
+                "music_threshold": music_threshold,
+                "music_min_duration": music_min_duration,
+                "music_min_gap": music_min_gap,
+                "music_count_warning": music_count_warning,
+                "enhanced_music_detection": enhanced_music_detection,
+            }
+            reusable, outputs = (
+                is_stage_reusable(media.parent, media.stem, "preproc", str(media), preproc_params)
+                if allow_resume and downstream_valid
+                else (False, [])
+            )
+            if reusable:
+                logger.info("resume: preproc valid; skipping")
+                audio_path = outputs[0]
+                if len(outputs) > 1:
+                    try:
+                        with open(outputs[1], "r", encoding="utf-8") as fh:
+                            music_segments = json.load(fh)
+                        music_segments = [
+                            s for s in music_segments if (s[1] - s[0]) >= music_min_duration
+                        ]
+                    except Exception:
+                        music_segments = None
+            else:
+                logger.info("resume: preproc invalid; running")
+                pre_out = preprocess_pipeline(
+                    input_path=str(media),
+                    outdir=str(work),
+                    track_index=None,
+                    denoise=False,
+                    denoise_aggressiveness=0.85,
+                    normalize=True,
+                    music_threshold=music_threshold,
+                    music_min_duration=music_min_duration,
+                    music_min_gap=music_min_gap,
+                    music_count_warning=music_count_warning,
+                    enhanced_music_detection=enhanced_music_detection,
+                    stem=media.stem,
+                )
+                audio_path = pre_out.get("normalized_wav") or pre_out.get("audio_wav")
+                outputs = [audio_path]
+                if pre_out.get("music_segments"):
+                    with open(pre_out["music_segments"], "r", encoding="utf-8") as fh:
                         music_segments = json.load(fh)
                     music_segments = [
                         s for s in music_segments if (s[1] - s[0]) >= music_min_duration
                     ]
-                except Exception:
-                    music_segments = None
-        else:
-            logger.info("resume: preproc invalid; running")
-            pre_out = preprocess_pipeline(
-                input_path=str(media),
-                outdir=str(work),
-                track_index=None,
-                denoise=False,
-                denoise_aggressiveness=0.85,
-                normalize=True,
-                music_threshold=music_threshold,
-                music_min_duration=music_min_duration,
-                music_min_gap=music_min_gap,
-                music_count_warning=music_count_warning,
-                enhanced_music_detection=enhanced_music_detection,
-                stem=media.stem,
-            )
-            audio_path = pre_out.get("normalized_wav") or pre_out.get("audio_wav")
-            outputs = [audio_path]
-            if pre_out.get("music_segments"):
-                with open(pre_out["music_segments"], "r", encoding="utf-8") as fh:
-                    music_segments = json.load(fh)
-                music_segments = [
-                    s for s in music_segments if (s[1] - s[0]) >= music_min_duration
-                ]
-                outputs.append(pre_out["music_segments"])
-            stage_complete(media.parent, media.stem, "preproc", str(media), preproc_params, outputs)
-        downstream_valid = downstream_valid and reusable
+                    outputs.append(pre_out["music_segments"])
+                stage_complete(media.parent, media.stem, "preproc", str(media), preproc_params, outputs)
+            downstream_valid = downstream_valid and reusable
 
-        # Stage: transcribe
-        transcribe_params = {
-            "model": "large-v3-turbo",
-            "compute_type": "float32",
-            "device": device,
-            "batch_size": 8,
-            "skip_music": skip_music,
-        }
-        if beam_size is not None:
-            transcribe_params["beam_size"] = beam_size
-        reusable, outputs = (
-            is_stage_reusable(media.parent, media.stem, "transcribe", str(media), transcribe_params)
-            if allow_resume and downstream_valid
-            else (False, [])
-        )
-        if reusable:
-            logger.info("resume: transcribe valid; skipping")
-            trans_out = {
-                "transcript_json": outputs[0],
-                "segments_json": outputs[1] if len(outputs) > 1 else None,
+            # Stage: transcribe
+            transcribe_params = {
+                "model": "large-v3-turbo",
+                "compute_type": "float32",
+                "device": device,
+                "batch_size": 8,
+                "skip_music": skip_music,
             }
-        else:
-            logger.info("resume: transcribe invalid; running")
-            trans_out = transcribe_and_align(
-                audio_path=audio_path,
-                outdir=str(work),
-                model="large-v3-turbo",
-                compute_type="float32",
-                device=device,
-                batch_size=8,
-                beam_size=beam_size,
-                music_segments=music_segments,
-                skip_music=skip_music,
-                spellcheck=False,
-                stem=media.stem,
+            if beam_size is not None:
+                transcribe_params["beam_size"] = beam_size
+            reusable, outputs = (
+                is_stage_reusable(media.parent, media.stem, "transcribe", str(media), transcribe_params)
+                if allow_resume and downstream_valid
+                else (False, [])
             )
-            outputs = [trans_out["transcript_json"], trans_out["segments_json"]]
-            stage_complete(media.parent, media.stem, "transcribe", str(media), transcribe_params, outputs)
-        downstream_valid = downstream_valid and reusable
+            if reusable:
+                logger.info("resume: transcribe valid; skipping")
+                trans_out = {
+                    "transcript_json": outputs[0],
+                    "segments_json": outputs[1] if len(outputs) > 1 else None,
+                }
+            else:
+                logger.info("resume: transcribe invalid; running")
+                trans_out = transcribe_and_align(
+                    audio_path=audio_path,
+                    outdir=str(work),
+                    model="large-v3-turbo",
+                    compute_type="float32",
+                    device=device,
+                    batch_size=8,
+                    beam_size=beam_size,
+                    music_segments=music_segments,
+                    skip_music=skip_music,
+                    spellcheck=False,
+                    stem=media.stem,
+                )
+                outputs = [trans_out["transcript_json"], trans_out["segments_json"]]
+                stage_complete(media.parent, media.stem, "transcribe", str(media), transcribe_params, outputs)
+            downstream_valid = downstream_valid and reusable
 
-        # Stage: format
-        out_srt, out_txt, stem = _resolve_outputs(media, output_root)
-        out_txt_path = out_txt if write_transcript_flag else None
-        corrections_fp = (
-            compute_source_fingerprint(str(corrections_path))
-            if corrections_path and corrections_path.exists()
-            else None
-        )
-        format_params = {
-            "max_chars": max_chars,
-            "max_lines": max_lines,
-            "max_duration": max_duration,
-            "min_gap": min_gap,
-            "write_transcript": write_transcript_flag,
-            "output_root": str(output_root) if output_root else None,
-            "corrections": corrections_fp,
-        }
-        reusable, outputs = (
-            is_stage_reusable(media.parent, media.stem, "format", str(media), format_params)
-            if allow_resume and downstream_valid
-            else (False, [])
-        )
-        if reusable:
-            logger.info("resume: format valid; skipping")
-        else:
-            logger.info("resume: format invalid; running")
-            subs = load_segments(Path(trans_out["segments_json"]))
-            if corrections_path and corrections_path.exists():
-                rules = load_corrections(corrections_path)
-                for ev in subs.events:
-                    fixed = apply_corrections(ev.plaintext, rules)
-                    ev.text = fixed.replace("\n", "\\N")
-            enforce_limits(
-                subs,
-                max_chars=max_chars,
-                max_lines=max_lines,
-                max_duration=max_duration,
-                min_gap=min_gap,
+            # Stage: format
+            out_srt, out_txt, stem = _resolve_outputs(media, output_root)
+            out_txt_path = out_txt if write_transcript_flag else None
+            corrections_fp = (
+                compute_source_fingerprint(str(corrections_path))
+                if corrections_path and corrections_path.exists()
+                else None
             )
-            write_outputs(subs, out_srt, out_txt_path)
-            outputs = [str(out_srt)]
+            format_params = {
+                "max_chars": max_chars,
+                "max_lines": max_lines,
+                "max_duration": max_duration,
+                "min_gap": min_gap,
+                "write_transcript": write_transcript_flag,
+                "output_root": str(output_root) if output_root else None,
+                "corrections": corrections_fp,
+            }
+            reusable, outputs = (
+                is_stage_reusable(media.parent, media.stem, "format", str(media), format_params)
+                if allow_resume and downstream_valid
+                else (False, [])
+            )
+            if reusable:
+                logger.info("resume: format valid; skipping")
+            else:
+                logger.info("resume: format invalid; running")
+                subs = load_segments(Path(trans_out["segments_json"]))
+                if corrections_path and corrections_path.exists():
+                    rules = load_corrections(corrections_path)
+                    for ev in subs.events:
+                        fixed = apply_corrections(ev.plaintext, rules)
+                        ev.text = fixed.replace("\n", "\\N")
+                enforce_limits(
+                    subs,
+                    max_chars=max_chars,
+                    max_lines=max_lines,
+                    max_duration=max_duration,
+                    min_gap=min_gap,
+                )
+                write_outputs(subs, out_srt, out_txt_path)
+                outputs = [str(out_srt)]
+                if out_txt_path:
+                    outputs.append(str(out_txt_path))
+                stage_complete(media.parent, media.stem, "format", str(media), format_params, outputs)
+
+            logger.info("SRT saved to %s", out_srt)
             if out_txt_path:
-                outputs.append(str(out_txt_path))
-            stage_complete(media.parent, media.stem, "format", str(media), format_params, outputs)
+                logger.info("Transcript saved to %s", out_txt_path)
 
-        logger.info("SRT saved to %s", out_srt)
-        if out_txt_path:
-            logger.info("Transcript saved to %s", out_txt_path)
+            # Mark success
+            success_flag = work / "SUCCESS"
+            success_flag.write_text("ok", encoding="utf-8")
 
-        # Mark success
-        success_flag = work / "SUCCESS"
-        success_flag.write_text("ok", encoding="utf-8")
+            # Cleanup policy: only run when success flag exists
+            if success_flag.exists():
+                if purge_all_on_success:
+                    try:
+                        out_srt.unlink(missing_ok=True)
+                        if out_txt_path:
+                            out_txt_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                if clean_intermediates:
+                    import shutil
+                    try:
+                        shutil.rmtree(work)
+                    except Exception:
+                        pass
 
-        # Cleanup policy: only run when success flag exists
-        if success_flag.exists():
-            if purge_all_on_success:
-                try:
-                    out_srt.unlink(missing_ok=True)
-                    if out_txt_path:
-                        out_txt_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-            if clean_intermediates:
-                import shutil
-                try:
-                    shutil.rmtree(work)
-                except Exception:
-                    pass
-
-        return 0
+            return 0
+        except Exception as exc:  # record failure but continue batch
+            fail_flag = work / "FAILED"
+            try:
+                fail_flag.write_text(str(exc), encoding="utf-8")
+            except Exception:
+                pass
+            logger.exception("processing failed for %s", media)
+            return 1
     finally:
         release_lock(manifest_path)
 

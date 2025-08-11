@@ -55,6 +55,10 @@ import os
 import inspect
 from typing import List, Optional, Tuple
 
+from audio_backend import setup_torchaudio_backend
+
+setup_torchaudio_backend()
+
 import torch
 import whisperx
 import pysubs2

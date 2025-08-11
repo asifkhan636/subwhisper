@@ -5,6 +5,10 @@ import subprocess
 from typing import List, Optional, Tuple
 import shutil
 
+from audio_backend import setup_torchaudio_backend
+
+setup_torchaudio_backend()
+
 import librosa
 import noisereduce as nr
 import soundfile as sf

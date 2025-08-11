@@ -7,6 +7,7 @@ from packaging import version
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 import urllib.request
+from typing import Iterable
 
 # Requires ``pyannote.audio`` >=2 according to the model card
 VAD_MODEL = "pyannote/vad"
@@ -14,16 +15,22 @@ VAD_MODEL = "pyannote/vad"
 logger = logging.getLogger(__name__)
 
 
-def warn_if_incompatible_pyannote() -> None:
-    """Ensure ``pyannote.audio`` matches the model expectation.
+def warn_if_incompatible_pyannote(models: Iterable[str] | None = None) -> None:
+    """Ensure ``pyannote.audio`` matches the model expectations.
 
-    The function attempts to read the ``requirements.txt`` for ``VAD_MODEL``
-    from the HuggingFace Hub to determine the expected ``pyannote.audio``
-    version. When the requirement cannot be determined (e.g. due to missing
-    network connectivity) the function falls back to a simple major version
-    check requiring ``>=2``.  When an incompatibility is detected the function
-    logs an actionable error message and raises ``RuntimeError`` to halt
-    execution.
+    Parameters
+    ----------
+    models:
+        Additional HuggingFace model IDs whose ``requirements.txt`` should be
+        inspected for a ``pyannote.audio`` constraint. ``VAD_MODEL`` is always
+        included.
+
+    The function reads the ``requirements.txt`` for each model from the
+    HuggingFace Hub to determine the expected ``pyannote.audio`` version. When
+    the requirement cannot be determined (e.g. due to missing network
+    connectivity) the function falls back to a simple major version check
+    requiring ``>=2``. When an incompatibility is detected the function logs an
+    actionable error message and raises ``RuntimeError`` to halt execution.
     """
 
     try:
@@ -35,40 +42,47 @@ def warn_if_incompatible_pyannote() -> None:
 
     installed = version.parse(pyannote.audio.__version__)
 
-    expected: SpecifierSet | None = None
-    try:  # pragma: no cover - network dependent
-        url = f"https://huggingface.co/{VAD_MODEL}/raw/main/requirements.txt"
-        with urllib.request.urlopen(url, timeout=5) as resp:  # type: ignore[arg-type]
-            text = resp.read().decode()
-        for line in text.splitlines():
-            line = line.strip()
-            if line.startswith("pyannote.audio"):
-                req = Requirement(line)
-                expected = req.specifier
-                break
-    except Exception:
-        # Unable to fetch requirement; fall back to major version check
-        pass
+    to_check = [VAD_MODEL]
+    if models:
+        to_check.extend(models)
 
-    if expected and installed not in expected:
-        msg = (
-            f"{VAD_MODEL} expects pyannote.audio {expected}, "
-            f"but {pyannote.audio.__version__} is installed."
-            " Please install a compatible version."
-        )
-        logger.error(msg)
-        raise RuntimeError(msg)
+    for model in to_check:
+        expected: SpecifierSet | None = None
+        try:  # pragma: no cover - network dependent
+            url = f"https://huggingface.co/{model}/raw/main/requirements.txt"
+            with urllib.request.urlopen(url, timeout=5) as resp:  # type: ignore[arg-type]
+                text = resp.read().decode()
+            for line in text.splitlines():
+                line = line.strip()
+                if line.startswith("pyannote.audio"):
+                    req = Requirement(line)
+                    expected = req.specifier
+                    break
+        except Exception:
+            # Unable to fetch requirement; fall back to major version check
+            pass
+
+        if expected and installed not in expected:
+            msg = (
+                f"{model} expects pyannote.audio {expected}, "
+                f"but {pyannote.audio.__version__} is installed."
+                " Please install a compatible version."
+            )
+            logger.error(msg)
+            raise RuntimeError(msg)
 
     if installed.major < 2:  # pragma: no cover - simple branch
         msg = (
             f"pyannote.audio {pyannote.audio.__version__} detected; "
-            f"upgrade to >=2.0 for {VAD_MODEL}."
+            f"upgrade to >=2.0 for {', '.join(to_check)}."
         )
         logger.error(msg)
         raise RuntimeError(msg)
 
     logger.debug(
-        "pyannote.audio %s is compatible with %s", pyannote.audio.__version__, VAD_MODEL
+        "pyannote.audio %s is compatible with %s",
+        pyannote.audio.__version__,
+        ", ".join(to_check),
     )
     return None
 

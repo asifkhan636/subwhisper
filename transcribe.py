@@ -138,8 +138,8 @@ def transcribe_and_align(
         Mapping containing ``transcript_json`` and ``segments_json`` paths.
     """
     # Abort early when the installed ``pyannote.audio`` is incompatible with
-    # the expected version for the VAD model.
-    warn_if_incompatible_pyannote()
+    # the expected versions for the VAD and alignment models.
+    warn_if_incompatible_pyannote([ALIGN_MODEL_NAME])
 
     if resume_outputs and all(
         resume_outputs.get(k) and os.path.exists(resume_outputs[k])

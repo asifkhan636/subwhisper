@@ -310,35 +310,57 @@ def detect_music_segments(
     """
 
     _ensure_librosa()
+    _ensure_soundfile()
     try:
-        logger.info("Loading audio from %s", audio_path)
-        y, sr = librosa.load(audio_path, sr=None, mono=True)
-        logger.info("Separating harmonic and percussive components")
-        y_harm, y_perc = librosa.effects.hpss(y)
-
         frame_length = 2048
         hop_length = 512
-        logger.info("Computing RMS energies")
-        harm_rms = librosa.feature.rms(
-            y=y_harm, frame_length=frame_length, hop_length=hop_length
-        )[0]
-        perc_rms = librosa.feature.rms(
-            y=y_perc, frame_length=frame_length, hop_length=hop_length
-        )[0]
 
-        ratio = perc_rms / (harm_rms + 1e-10)
+        logger.info("Streaming audio from %s", audio_path)
+        sr = sf.info(audio_path).samplerate
 
-        score = ratio
-        if enhanced:
-            logger.info("Computing spectral features for enhanced detection")
-            centroid = librosa.feature.spectral_centroid(
-                y=y, sr=sr, hop_length=hop_length
+        ratios: List[np.ndarray] = []
+        centroids: List[np.ndarray] = []
+        fluxes: List[np.ndarray] = []
+
+        stream = librosa.stream(
+            audio_path,
+            block_length=256,
+            frame_length=frame_length,
+            hop_length=hop_length,
+            mono=True,
+        )
+
+        for y in stream:
+            y_harm, y_perc = librosa.effects.hpss(y)
+            harm_rms = librosa.feature.rms(
+                y=y_harm, frame_length=frame_length, hop_length=hop_length
             )[0]
-            flux = librosa.onset.onset_strength(
-                y=y, sr=sr, hop_length=hop_length
-            )
-            centroid = centroid / (np.max(centroid) + 1e-10)
-            flux = flux / (np.max(flux) + 1e-10)
+            perc_rms = librosa.feature.rms(
+                y=y_perc, frame_length=frame_length, hop_length=hop_length
+            )[0]
+            ratios.append(perc_rms / (harm_rms + 1e-10))
+
+            if enhanced:
+                centroids.append(
+                    librosa.feature.spectral_centroid(
+                        y=y, sr=sr, hop_length=hop_length
+                    )[0]
+                )
+                fluxes.append(
+                    librosa.onset.onset_strength(
+                        y=y, sr=sr, hop_length=hop_length
+                    )
+                )
+
+        ratio = np.concatenate(ratios) if ratios else np.array([])
+        score = ratio
+        if enhanced and ratio.size:
+            centroid = np.concatenate(centroids) if centroids else np.array([])
+            flux = np.concatenate(fluxes) if fluxes else np.array([])
+            if centroid.size:
+                centroid = centroid / (np.max(centroid) + 1e-10)
+            if flux.size:
+                flux = flux / (np.max(flux) + 1e-10)
             score = score + 0.5 * centroid + 0.5 * flux
 
         mask = score > threshold

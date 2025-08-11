@@ -41,3 +41,19 @@ def test_setup_backend_no_warning(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         setup_torchaudio_backend()
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_speechbrain_logger_suppressed(monkeypatch, caplog):
+    stub = types.SimpleNamespace(set_audio_backend=lambda *a, **k: None)
+    monkeypatch.delenv("TORCHAUDIO_ENABLE_SOX_IO_BACKEND", raising=False)
+    monkeypatch.setitem(sys.modules, "torchaudio", stub)
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+
+    logger = logging.getLogger("speechbrain.utils.torch_audio_backend")
+    logger.setLevel(logging.WARNING)
+
+    setup_torchaudio_backend()
+
+    with caplog.at_level(logging.WARNING):
+        logger.warning("boom")
+    assert not [r for r in caplog.records if r.name == "speechbrain.utils.torch_audio_backend"]

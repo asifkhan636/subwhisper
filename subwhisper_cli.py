@@ -52,6 +52,8 @@ def _process_one(
     output_root: Optional[Path],
     device: str,
     skip_music: bool,
+    music_min_duration: float,
+    music_count_warning: int,
     beam_size: Optional[int],
     clean_intermediates: bool,
     purge_all_on_success: bool,
@@ -97,6 +99,8 @@ def _process_one(
             "denoise_aggressiveness": 0.85,
             "normalize": True,
             "music_threshold": 0.5,
+            "music_min_duration": music_min_duration,
+            "music_count_warning": music_count_warning,
         }
         reusable, outputs = (
             is_stage_reusable(media.parent, media.stem, "preproc", str(media), preproc_params)
@@ -122,6 +126,8 @@ def _process_one(
                 denoise_aggressiveness=0.85,
                 normalize=True,
                 music_threshold=0.5,
+                music_min_duration=music_min_duration,
+                music_count_warning=music_count_warning,
                 stem=media.stem,
             )
             audio_path = pre_out.get("normalized_wav") or pre_out.get("audio_wav")
@@ -253,6 +259,18 @@ def main() -> int:
     p.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="Device for WhisperX")
     p.add_argument("--skip-music", action="store_true", help="Skip segments overlapping detected music")
     p.add_argument(
+        "--music-min-duration",
+        type=float,
+        default=0.0,
+        help="Drop detected music segments shorter than this duration in seconds",
+    )
+    p.add_argument(
+        "--music-count-warning",
+        type=int,
+        default=1000,
+        help="Warn when detected music segments exceed this count",
+    )
+    p.add_argument(
         "--beam-size",
         type=int,
         default=None,
@@ -293,6 +311,8 @@ def main() -> int:
                 output_root=output_root,
                 device=args.device,
                 skip_music=args.skip_music,
+                music_min_duration=args.music_min_duration,
+                music_count_warning=args.music_count_warning,
                 beam_size=args.beam_size,
                 clean_intermediates=clean_intermediates,
                 purge_all_on_success=args.purge_all_on_success,
@@ -321,6 +341,8 @@ def main() -> int:
                         output_root=output_root,  # if None, defaults to media.parent
                         device=args.device,
                         skip_music=args.skip_music,
+                        music_min_duration=args.music_min_duration,
+                        music_count_warning=args.music_count_warning,
                         beam_size=args.beam_size,
                         clean_intermediates=clean_intermediates,
                         purge_all_on_success=args.purge_all_on_success,

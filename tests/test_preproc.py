@@ -1,6 +1,7 @@
 import json
 import sys
 import types
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -12,24 +13,6 @@ import pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-# Create lightweight stubs for optional heavy dependencies so that ``preproc``
-# can be imported without installing them.
-librosa_stub = types.ModuleType("librosa")
-librosa_stub.load = lambda *a, **k: (None, None)
-librosa_stub.effects = types.SimpleNamespace(hpss=lambda y: (None, None))
-librosa_stub.feature = types.SimpleNamespace(rms=lambda *a, **k: None)
-librosa_stub.frames_to_time = lambda idx, sr, hop_length: float(idx)
-sys.modules.setdefault("librosa", librosa_stub)
-
-nr_stub = types.ModuleType("noisereduce")
-nr_stub.reduce_noise = lambda **k: None
-sys.modules.setdefault("noisereduce", nr_stub)
-
-sf_stub = types.ModuleType("soundfile")
-sf_stub.read = lambda *a, **k: (None, None)
-sf_stub.write = lambda *a, **k: None
-sys.modules.setdefault("soundfile", sf_stub)
 
 import preproc
 
@@ -125,7 +108,7 @@ def test_preprocess_pipeline_stem_builds_filenames(monkeypatch, tmp_path):
         pathlib.Path(dst).touch()
         return dst
 
-    def fake_detect(audio, seg_file, threshold):
+    def fake_detect(audio, seg_file, **kwargs):
         pathlib.Path(seg_file).touch()
         return []
 
@@ -203,3 +186,75 @@ def test_detect_music_segments_threshold(monkeypatch, tmp_path, threshold, expec
     assert segments == expected
     # Ensure JSON file was written
     assert seg_file.is_file()
+
+
+def test_detect_music_segments_merges_adjacent(monkeypatch, tmp_path):
+    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(5), 22050))
+    monkeypatch.setattr(
+        preproc.librosa.effects,
+        "hpss",
+        lambda y: (np.zeros(5), np.zeros(5)),
+    )
+    harm_rms = np.array([[1, 1, 1, 1, 1]])
+    perc_rms = np.array([[1, 1, 0, 1, 1]])
+    rms_mock = MagicMock(side_effect=[harm_rms, perc_rms])
+    monkeypatch.setattr(preproc.librosa.feature, "rms", rms_mock)
+    monkeypatch.setattr(
+        preproc.librosa,
+        "frames_to_time",
+        lambda idx, sr, hop_length: float(idx // 2),
+    )
+
+    seg_file = tmp_path / "music_segments.json"
+    segments = preproc.detect_music_segments("dummy.wav", str(seg_file))
+
+    assert segments == [(0.0, 2.0)]
+
+
+def test_detect_music_segments_drops_short(monkeypatch, tmp_path):
+    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(7), 22050))
+    monkeypatch.setattr(
+        preproc.librosa.effects,
+        "hpss",
+        lambda y: (np.zeros(7), np.zeros(7)),
+    )
+    harm_rms = np.array([[1, 1, 1, 1, 0, 1, 0]])
+    perc_rms = np.array([[1, 1, 1, 1, 0, 1, 0]])
+    rms_mock = MagicMock(side_effect=[harm_rms, perc_rms])
+    monkeypatch.setattr(preproc.librosa.feature, "rms", rms_mock)
+    monkeypatch.setattr(
+        preproc.librosa,
+        "frames_to_time",
+        lambda idx, sr, hop_length: idx * 0.5,
+    )
+
+    seg_file = tmp_path / "music_segments.json"
+    segments = preproc.detect_music_segments(
+        "dummy.wav", str(seg_file), min_duration=1.0
+    )
+
+    assert segments == [(0.0, 2.0)]
+
+
+def test_detect_music_segments_warns_on_many_segments(monkeypatch, tmp_path, caplog):
+    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(4), 22050))
+    monkeypatch.setattr(
+        preproc.librosa.effects,
+        "hpss",
+        lambda y: (np.zeros(4), np.zeros(4)),
+    )
+    harm_rms = np.array([[1, 1, 1, 1]])
+    perc_rms = np.array([[1, 0, 1, 0]])
+    rms_mock = MagicMock(side_effect=[harm_rms, perc_rms])
+    monkeypatch.setattr(preproc.librosa.feature, "rms", rms_mock)
+    monkeypatch.setattr(
+        preproc.librosa, "frames_to_time", lambda idx, sr, hop_length: float(idx)
+    )
+
+    seg_file = tmp_path / "music_segments.json"
+    with caplog.at_level(logging.WARNING, logger=preproc.logger.name):
+        preproc.detect_music_segments(
+            "dummy.wav", str(seg_file), count_warning=1
+        )
+
+    assert any("exceeds warning threshold" in r.message for r in caplog.records)

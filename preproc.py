@@ -220,7 +220,11 @@ def normalize_audio(input_wav: str, output_wav: str, enabled: bool = True) -> st
 
 
 def detect_music_segments(
-    audio_path: str, segments_file: str, threshold: float = 0.5
+    audio_path: str,
+    segments_file: str,
+    threshold: float = 0.5,
+    min_duration: float = 0.0,
+    count_warning: int = 1000,
 ) -> List[Tuple[float, float]]:
     """Detect likely music segments within an audio file.
 
@@ -239,6 +243,12 @@ def detect_music_segments(
     threshold: float, optional
         Minimum percussive-to-harmonic energy ratio to qualify as a music
         segment. Defaults to ``0.5``.
+    min_duration: float, optional
+        Discard segments shorter than this many seconds. Defaults to ``0.0``
+        (no minimum).
+    count_warning: int, optional
+        Emit a warning when the number of detected segments exceeds this
+        value. Defaults to ``1000``.
 
     Returns
     -------
@@ -282,10 +292,28 @@ def detect_music_segments(
             )
             segments.append((start_time, end_time))
 
-        logger.info("Detected %s music segments", len(segments))
+        # Merge adjacent or overlapping segments
+        merged: List[Tuple[float, float]] = []
+        for seg in segments:
+            if merged and seg[0] <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], seg[1]))
+            else:
+                merged.append(seg)
+
+        # Drop segments shorter than minimum duration
+        filtered = [s for s in merged if (s[1] - s[0]) >= min_duration]
+
+        if len(filtered) > count_warning:
+            logger.warning(
+                "Detected %s music segments which exceeds warning threshold %s",
+                len(filtered),
+                count_warning,
+            )
+
+        logger.info("Detected %s music segments", len(filtered))
         with open(segments_file, "w", encoding="utf-8") as fh:
-            json.dump(segments, fh)
-        return segments
+            json.dump(filtered, fh)
+        return filtered
     except Exception as exc:  # pragma: no cover - defensive
         logger.error("Music segment detection failed: %s", exc)
         raise RuntimeError("music segment detection failed") from exc
@@ -299,6 +327,8 @@ def preprocess_pipeline(
     denoise_aggressiveness: float = 0.85,
     normalize: bool = False,
     music_threshold: float = 0.5,
+    music_min_duration: float = 0.0,
+    music_count_warning: int = 1000,
     stem: Optional[str] = None,
     resume_outputs: Optional[dict] = None,
 ) -> dict:
@@ -327,6 +357,11 @@ def preprocess_pipeline(
     music_threshold: float, optional
         Threshold passed to :func:`detect_music_segments`. Detected segments are
         saved to ``music_segments.json`` inside ``outdir``.
+    music_min_duration: float, optional
+        Minimum duration for detected music segments; shorter segments are
+        discarded.
+    music_count_warning: int, optional
+        Emit a warning when the number of music segments exceeds this count.
     stem: str | None, optional
         Base name for generated files. When provided, intermediate and output
         files are prefixed with ``"<stem>."``.
@@ -383,7 +418,13 @@ def preprocess_pipeline(
         logger.info("resume: using existing")
         outputs["music_segments"] = resume_outputs["music_segments"]
     else:
-        detect_music_segments(audio_path, segments_file, threshold=music_threshold)
+        detect_music_segments(
+            audio_path,
+            segments_file,
+            threshold=music_threshold,
+            min_duration=music_min_duration,
+            count_warning=music_count_warning,
+        )
         outputs["music_segments"] = segments_file
 
     return outputs
@@ -425,6 +466,18 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--music-min-duration",
+        type=float,
+        default=0.0,
+        help="Drop detected music segments shorter than this duration in seconds",
+    )
+    parser.add_argument(
+        "--music-count-warning",
+        type=int,
+        default=1000,
+        help="Warn when detected music segments exceed this count",
+    )
+    parser.add_argument(
         "--outdir",
         default="preproc",
         help=(
@@ -448,6 +501,8 @@ def main() -> None:
             denoise_aggressiveness=args.denoise_aggressive,
             normalize=args.normalize,
             music_threshold=args.music_threshold,
+            music_min_duration=args.music_min_duration,
+            music_count_warning=args.music_count_warning,
             stem=args.stem,
         )
     except Exception as exc:  # pragma: no cover - CLI

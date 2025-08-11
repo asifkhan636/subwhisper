@@ -6,6 +6,10 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple, Set
 
+from audio_backend import setup_torchaudio_backend
+
+setup_torchaudio_backend()
+
 from preproc import preprocess_pipeline
 from transcribe import transcribe_and_align
 from subtitle_pipeline import load_segments, enforce_limits, write_outputs

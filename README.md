@@ -140,6 +140,10 @@ versions are detected.
 - **FFmpeg**: used for audio extraction
 - **Python packages**: `torch==1.13.1`, `pyannote.audio>=2.1,<3`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, `librosa>=0.10`, `noisereduce>=3.0`
 
+On Windows, `torchaudio` must use the `soundfile` backend. Subwhisper
+configures this automatically during startup, but ensure the `soundfile`
+package and its native dependencies are installed to avoid import errors.
+
 ### Create a Conda Environment
 
 Use the provided `environment.yml` to set up everything in one step:

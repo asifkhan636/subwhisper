@@ -1,0 +1,38 @@
+"""Helpers for configuring audio backends.
+
+This module currently ensures that torchaudio uses the ``soundfile`` backend
+on Windows.  The selection is deferred to a helper so that startup scripts can
+call it before importing libraries like :mod:`speechbrain` which inspect the
+backend at import time.
+"""
+
+from __future__ import annotations
+
+import logging
+import platform
+
+logger = logging.getLogger(__name__)
+
+
+def setup_torchaudio_backend() -> None:
+    """Configure torchaudio to use the ``soundfile`` backend on Windows.
+
+    The function is intentionally silent and best-effort: if torchaudio is
+    unavailable or the backend cannot be set, the failure is logged at debug
+    level and the program continues with torchaudio's default behaviour.
+    """
+
+    if platform.system() != "Windows":
+        return
+
+    try:  # pragma: no cover - depends on environment
+        import torchaudio  # type: ignore
+    except Exception as exc:  # pragma: no cover - torchaudio missing
+        logger.debug("torchaudio not available: %s", exc)
+        return
+
+    try:  # pragma: no cover - backend may be unavailable
+        torchaudio.set_audio_backend("soundfile")
+    except Exception as exc:  # pragma: no cover - backend may fail
+        logger.debug("failed to set torchaudio backend: %s", exc)
+

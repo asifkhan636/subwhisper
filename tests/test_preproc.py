@@ -166,7 +166,12 @@ def test_normalize_audio_invokes_ffmpeg_when_enabled(monkeypatch, tmp_path):
     ],
 )
 def test_detect_music_segments_threshold(monkeypatch, tmp_path, threshold, expected):
-    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(4), 22050))
+    monkeypatch.setattr(preproc.sf, "info", lambda p: SimpleNamespace(samplerate=22050))
+
+    def stream_stub(path, block_length, frame_length, hop_length, mono):
+        yield np.zeros(4)
+
+    monkeypatch.setattr(preproc.librosa, "stream", stream_stub)
     monkeypatch.setattr(
         preproc.librosa.effects,
         "hpss",
@@ -189,7 +194,12 @@ def test_detect_music_segments_threshold(monkeypatch, tmp_path, threshold, expec
 
 
 def test_detect_music_segments_merges_adjacent(monkeypatch, tmp_path):
-    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(5), 22050))
+    monkeypatch.setattr(preproc.sf, "info", lambda p: SimpleNamespace(samplerate=22050))
+
+    def stream_stub(path, block_length, frame_length, hop_length, mono):
+        yield np.zeros(5)
+
+    monkeypatch.setattr(preproc.librosa, "stream", stream_stub)
     monkeypatch.setattr(
         preproc.librosa.effects,
         "hpss",
@@ -212,7 +222,12 @@ def test_detect_music_segments_merges_adjacent(monkeypatch, tmp_path):
 
 
 def test_detect_music_segments_drops_short(monkeypatch, tmp_path):
-    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(7), 22050))
+    monkeypatch.setattr(preproc.sf, "info", lambda p: SimpleNamespace(samplerate=22050))
+
+    def stream_stub(path, block_length, frame_length, hop_length, mono):
+        yield np.zeros(7)
+
+    monkeypatch.setattr(preproc.librosa, "stream", stream_stub)
     monkeypatch.setattr(
         preproc.librosa.effects,
         "hpss",
@@ -238,7 +253,12 @@ def test_detect_music_segments_drops_short(monkeypatch, tmp_path):
 
 def test_detect_music_segments_smooths_flips(monkeypatch, tmp_path):
     """Brief non-music flips inside a music region should be removed."""
-    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(3), 22050))
+    monkeypatch.setattr(preproc.sf, "info", lambda p: SimpleNamespace(samplerate=22050))
+
+    def stream_stub(path, block_length, frame_length, hop_length, mono):
+        yield np.zeros(3)
+
+    monkeypatch.setattr(preproc.librosa, "stream", stream_stub)
     monkeypatch.setattr(
         preproc.librosa.effects,
         "hpss",
@@ -260,7 +280,12 @@ def test_detect_music_segments_smooths_flips(monkeypatch, tmp_path):
 
 def test_detect_music_segments_merges_small_gaps(monkeypatch, tmp_path):
     """Segments separated by short gaps should be merged when min_gap is set."""
-    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(7), 22050))
+    monkeypatch.setattr(preproc.sf, "info", lambda p: SimpleNamespace(samplerate=22050))
+
+    def stream_stub(path, block_length, frame_length, hop_length, mono):
+        yield np.zeros(7)
+
+    monkeypatch.setattr(preproc.librosa, "stream", stream_stub)
     monkeypatch.setattr(
         preproc.librosa.effects,
         "hpss",
@@ -283,7 +308,12 @@ def test_detect_music_segments_merges_small_gaps(monkeypatch, tmp_path):
 
 
 def test_detect_music_segments_warns_on_many_segments(monkeypatch, tmp_path, caplog):
-    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(4), 22050))
+    monkeypatch.setattr(preproc.sf, "info", lambda p: SimpleNamespace(samplerate=22050))
+
+    def stream_stub(path, block_length, frame_length, hop_length, mono):
+        yield np.zeros(4)
+
+    monkeypatch.setattr(preproc.librosa, "stream", stream_stub)
     monkeypatch.setattr(
         preproc.librosa.effects,
         "hpss",
@@ -307,7 +337,12 @@ def test_detect_music_segments_warns_on_many_segments(monkeypatch, tmp_path, cap
 
 
 def test_detect_music_segments_vad_suppresses(monkeypatch, tmp_path):
-    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(4), 22050))
+    monkeypatch.setattr(preproc.sf, "info", lambda p: SimpleNamespace(samplerate=22050))
+
+    def stream_stub(path, block_length, frame_length, hop_length, mono):
+        yield np.zeros(4)
+
+    monkeypatch.setattr(preproc.librosa, "stream", stream_stub)
     monkeypatch.setattr(
         preproc.librosa.effects,
         "hpss",
@@ -346,3 +381,34 @@ def test_detect_music_segments_vad_suppresses(monkeypatch, tmp_path):
     )
 
     assert segments == [(0.0, 1.0), (3.0, 4.0)]
+
+
+def test_detect_music_segments_streams_large_files(monkeypatch, tmp_path):
+    """Processing should iterate over multiple chunks without loading whole file."""
+    monkeypatch.setattr(preproc.sf, "info", lambda p: SimpleNamespace(samplerate=22050))
+
+    def stream_stub(path, block_length, frame_length, hop_length, mono):
+        yield np.zeros(3)
+        yield np.zeros(3)
+
+    monkeypatch.setattr(preproc.librosa, "stream", stream_stub)
+    monkeypatch.setattr(
+        preproc.librosa.effects,
+        "hpss",
+        lambda y: (np.zeros_like(y), np.zeros_like(y)),
+    )
+    harm1 = np.array([[1, 1, 1]])
+    perc1 = np.array([[1, 1, 1]])
+    harm2 = np.array([[1, 1, 1]])
+    perc2 = np.array([[1, 1, 1]])
+    rms_mock = MagicMock(side_effect=[harm1, perc1, harm2, perc2])
+    monkeypatch.setattr(preproc.librosa.feature, "rms", rms_mock)
+    monkeypatch.setattr(
+        preproc.librosa, "frames_to_time", lambda idx, sr, hop_length: float(idx)
+    )
+
+    seg_file = tmp_path / "music_segments.json"
+    segments = preproc.detect_music_segments("dummy.wav", str(seg_file))
+
+    assert segments == [(0.0, 6.0)]
+    assert rms_mock.call_count == 4

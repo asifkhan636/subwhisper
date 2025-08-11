@@ -1,14 +1,16 @@
 """Helpers for configuring audio backends.
 
-This module currently ensures that torchaudio uses the ``soundfile`` backend
-on Windows.  The selection is deferred to a helper so that startup scripts can
-call it before importing libraries like :mod:`speechbrain` which inspect the
-backend at import time.
+This module ensures that torchaudio uses the ``soundfile`` backend on
+Windows.  It also disables ``sox_io``-related warnings by setting the
+``TORCHAUDIO_ENABLE_SOX_IO_BACKEND`` environment variable.  The selection is
+deferred to a helper so that startup scripts can call it before importing
+libraries like :mod:`speechbrain` which inspect the backend at import time.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import platform
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,11 @@ def setup_torchaudio_backend() -> None:
 
     if platform.system() != "Windows":
         return
+
+    # ``torchaudio`` warns about the ``sox_io`` backend when the C++
+    # extension is unavailable.  Setting this environment variable silences
+    # the warning and makes the behaviour deterministic for callers.
+    os.environ.setdefault("TORCHAUDIO_ENABLE_SOX_IO_BACKEND", "0")
 
     try:  # pragma: no cover - depends on environment
         import torchaudio  # type: ignore

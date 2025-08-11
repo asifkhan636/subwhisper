@@ -21,9 +21,20 @@ sys.modules.setdefault("whisperx", stub)
 sys.modules.setdefault(
     "pysubs2", types.SimpleNamespace(load_from_whisper=lambda segments: None)
 )
-sys.modules.setdefault(
-    "subtitle_pipeline", types.SimpleNamespace(spellcheck_lines=lambda subs: None)
+subtitle_stub = types.SimpleNamespace(
+    spellcheck_lines=lambda subs: None,
+    load_segments=lambda *a, **k: None,
+    enforce_limits=lambda *a, **k: None,
+    write_outputs=lambda *a, **k: None,
 )
+sys.modules.setdefault("subtitle_pipeline", subtitle_stub)
+
+pyannote_pkg = types.ModuleType("pyannote")
+pyannote_audio_stub = types.ModuleType("pyannote.audio")
+pyannote_audio_stub.__version__ = "2.1.0"
+pyannote_pkg.audio = pyannote_audio_stub
+sys.modules.setdefault("pyannote", pyannote_pkg)
+sys.modules.setdefault("pyannote.audio", pyannote_audio_stub)
 transcribe = importlib.import_module("transcribe")
 
 

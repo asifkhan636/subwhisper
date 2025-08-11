@@ -137,9 +137,9 @@ def transcribe_and_align(
     dict
         Mapping containing ``transcript_json`` and ``segments_json`` paths.
     """
-    _msg = warn_if_incompatible_pyannote()
-    if _msg:
-        logger.warning(_msg)
+    # Abort early when the installed ``pyannote.audio`` is incompatible with
+    # the expected version for the VAD model.
+    warn_if_incompatible_pyannote()
 
     if resume_outputs and all(
         resume_outputs.get(k) and os.path.exists(resume_outputs[k])

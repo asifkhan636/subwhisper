@@ -2,7 +2,7 @@ ctranslate2>=4.3
 # pin torch and pyannote.audio to versions compatible with the pretrained
 # Pyannote VAD model; mismatched versions can raise runtime warnings or fail
 torch==1.13.1  # required for pretrained Pyannote VAD models
-pyannote.audio==2.1.1  # required for pretrained Pyannote VAD models
+pyannote.audio>=2.1,<3  # required for 'pyannote/voice-activity-detection'
 pysubs2>=1.8.0
 speechbrain>=1.0
 whisperx>=3.4.2,<4  # use latest WhisperX

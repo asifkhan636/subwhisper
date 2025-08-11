@@ -109,7 +109,7 @@ apply changes.
 ## Installation Prerequisites
 
 The scripts rely on a few external tools and Python packages. They have been
-tested with `whisperx>=3.4.2`, `torch==1.13.1`, and `pyannote.audio==2.1.1`.
+tested with `whisperx>=3.4.2`, `torch==1.13.1`, and `pyannote.audio>=2.1`.
 If your environment is missing these minimum versions, the CLI utilities will
 report the issue on startup. WhisperX 3.4.x does not support the `vad_filter`
 argument; to apply VAD you must either upgrade to a release that implements it
@@ -118,9 +118,10 @@ or run VAD separately with `whisperx.load_vad_model` /
 
 ### Version compatibility
 
-Pretrained Pyannote VAD models are sensitive to dependency versions. Use the
-exact pins from `requirements.txt` (or `environment.yml`) to avoid runtime
-warnings or failures:
+Pretrained Pyannote VAD models are sensitive to dependency versions. This
+project uses the `pyannote/voice-activity-detection` pipeline which requires
+`pyannote.audio` 2.x. Use the pins from `requirements.txt` (or
+`environment.yml`) to avoid runtime warnings or failures:
 
 ```bash
 pip install -r requirements.txt
@@ -128,15 +129,16 @@ pip install -r requirements.txt
 conda env create -f environment.yml
 ```
 
-These files ensure that `torch==1.13.1` and `pyannote.audio==2.1.1` are
-installed.
+These files ensure that `torch==1.13.1` and `pyannote.audio>=2.1,<3` are
+installed. The CLI performs a startup check and warns when incompatible
+versions are detected.
 
 ### Required Software
 
 - **Python**: 3.9 or newer
 - **Conda**: for managing the environment
 - **FFmpeg**: used for audio extraction
-- **Python packages**: `torch==1.13.1`, `pyannote.audio==2.1.1`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, `librosa>=0.10`, `noisereduce>=3.0`
+- **Python packages**: `torch==1.13.1`, `pyannote.audio>=2.1,<3`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, `librosa>=0.10`, `noisereduce>=3.0`
 
 ### Create a Conda Environment
 
@@ -147,13 +149,13 @@ conda env create -f environment.yml
 conda activate subwhisper
 ```
 
-This installs Python, `torch==1.13.1`, `pyannote.audio==2.1.1`,
+This installs Python, `torch==1.13.1`, `pyannote.audio>=2.1,<3`,
 `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, and other dependencies. The `torch`
 entry is CPU‑only by default; edit `environment.yml` to choose a CUDA‑enabled
 build or add optional packages.
 
-> **Note:** The pretrained Pyannote diarization model currently requires
-> `torch==1.13.1` and `pyannote.audio==2.1.1`. Using mismatched versions may
+> **Note:** The `pyannote/voice-activity-detection` pipeline requires
+> `torch==1.13.1` and `pyannote.audio>=2.1,<3`. Using mismatched versions may
 > trigger runtime warnings or failures, so ensure your environment matches
 > these versions when relying on the pretrained model.
 
@@ -172,7 +174,7 @@ conda create -n subwhisper python=3.10
 conda activate subwhisper
 
 # Install dependencies
- pip install "torch==1.13.1" "pyannote.audio==2.1.1" "speechbrain>=1.0" "whisperx>=3.4.2,<4"
+ pip install "torch==1.13.1" "pyannote.audio>=2.1,<3" "speechbrain>=1.0" "whisperx>=3.4.2,<4"
 # Install ffmpeg (choose one of the following)
 conda install -c conda-forge ffmpeg    # via conda
 # or

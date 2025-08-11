@@ -21,6 +21,7 @@ from run_state import (
     CACHE_DIR,
     MANIFEST_SUFFIX,
 )
+from vad import warn_if_incompatible_pyannote
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +238,7 @@ def _process_one(
 
 
 def main() -> int:
+    warn_if_incompatible_pyannote()
     p = argparse.ArgumentParser(description="subwhisper - single command pipeline")
     p.add_argument("--input", required=True, help="Input media file or directory")
     p.add_argument("--output-root", help="Root directory for outputs (default: same as input file parent for single-file; for folder, mirrors per file parent)")

@@ -59,6 +59,8 @@ import torch
 import whisperx
 import pysubs2
 
+from vad import warn_if_incompatible_pyannote
+
 from subtitle_pipeline import spellcheck_lines
 
 
@@ -130,6 +132,8 @@ def transcribe_and_align(
     dict
         Mapping containing ``transcript_json`` and ``segments_json`` paths.
     """
+    warn_if_incompatible_pyannote()
+
     if resume_outputs and all(
         resume_outputs.get(k) and os.path.exists(resume_outputs[k])
         for k in ("transcript_json", "segments_json")

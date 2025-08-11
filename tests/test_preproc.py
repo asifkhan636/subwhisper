@@ -258,3 +258,45 @@ def test_detect_music_segments_warns_on_many_segments(monkeypatch, tmp_path, cap
         )
 
     assert any("exceeds warning threshold" in r.message for r in caplog.records)
+
+
+def test_detect_music_segments_vad_suppresses(monkeypatch, tmp_path):
+    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(4), 22050))
+    monkeypatch.setattr(
+        preproc.librosa.effects,
+        "hpss",
+        lambda y: (np.zeros(4), np.zeros(4)),
+    )
+    harm_rms = np.array([[1.0, 1.0, 1.0, 1.0]])
+    perc_rms = np.array([[1.0, 1.0, 1.0, 1.0]])
+    rms_mock = MagicMock(side_effect=[harm_rms, perc_rms])
+    monkeypatch.setattr(preproc.librosa.feature, "rms", rms_mock)
+    monkeypatch.setattr(
+        preproc.librosa.feature,
+        "spectral_centroid",
+        lambda y, sr, hop_length: np.array([[0.1, 0.1, 0.1, 0.1]]),
+    )
+    monkeypatch.setattr(
+        preproc.librosa.onset,
+        "onset_strength",
+        lambda y, sr, hop_length: np.array([0.1, 0.1, 0.1, 0.1]),
+    )
+    monkeypatch.setattr(
+        preproc.librosa, "frames_to_time", lambda idx, sr, hop_length: float(idx)
+    )
+    monkeypatch.setattr(
+        preproc.librosa, "time_to_frames", lambda t, sr, hop_length: int(t)
+    )
+
+    class DummyVAD:
+        def __call__(self, inp):
+            return [SimpleNamespace(start=1.0, end=3.0, confidence=1.0)]
+
+    monkeypatch.setattr(preproc.vad, "load_vad_model", lambda: DummyVAD())
+
+    seg_file = tmp_path / "music_segments.json"
+    segments = preproc.detect_music_segments(
+        "dummy.wav", str(seg_file), enhanced=True
+    )
+
+    assert segments == [(0.0, 1.0), (3.0, 4.0)]

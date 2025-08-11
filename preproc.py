@@ -9,9 +9,47 @@ from audio_backend import setup_torchaudio_backend
 
 setup_torchaudio_backend()
 
+import importlib
+
 import librosa
 import noisereduce as nr
 import soundfile as sf
+import numpy as np
+
+import vad
+
+
+def _ensure_librosa() -> None:
+    """Reload ``librosa`` if a stub was imported."""
+    global librosa
+    if not hasattr(librosa, "load"):
+        import sys
+        sys.modules.pop("librosa", None)
+        librosa = importlib.import_module("librosa")
+
+
+def _ensure_soundfile() -> None:
+    """Reload ``soundfile`` if a stub was imported."""
+    global sf
+    if not hasattr(sf, "read"):
+        import sys
+        sys.modules.pop("soundfile", None)
+        sf = importlib.import_module("soundfile")
+
+
+_ensure_librosa()
+_ensure_soundfile()
+
+
+def _ensure_noisereduce() -> None:
+    global nr
+    if not hasattr(nr, "reduce_noise"):
+        import sys
+        sys.modules.pop("noisereduce", None)
+        nr = importlib.import_module("noisereduce")
+
+
+_ensure_noisereduce()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -152,6 +190,7 @@ def denoise_audio(audio_path: str, output_path: str, aggressiveness: float = 0.8
     str
         Path to the denoised WAV file.
     """
+    _ensure_soundfile()
     logger.info("Loading audio from %s", audio_path)
     try:
         data, rate = sf.read(audio_path)
@@ -225,14 +264,18 @@ def detect_music_segments(
     threshold: float = 0.5,
     min_duration: float = 0.0,
     count_warning: int = 1000,
+    enhanced: bool = False,
+    speech_threshold: float = 0.5,
 ) -> List[Tuple[float, float]]:
     """Detect likely music segments within an audio file.
 
     The function separates the harmonic and percussive components of the
     waveform using :func:`librosa.effects.hpss`. It then computes the
     percussive-to-harmonic energy ratio over short windows and returns the
-    start and end times of intervals whose ratio exceeds ``threshold``. All
-    detected segments are also written to ``segments_file``.
+    start and end times of intervals whose ratio exceeds ``threshold``. When
+    ``enhanced`` is ``True`` additional spectral features (centroid and flux)
+    and a voice-activity mask are used to suppress segments likely containing
+    speech. All detected segments are also written to ``segments_file``.
 
     Parameters
     ----------
@@ -249,6 +292,10 @@ def detect_music_segments(
     count_warning: int, optional
         Emit a warning when the number of detected segments exceeds this
         value. Defaults to ``1000``.
+    enhanced: bool, optional
+        Enable VAD-aware detection with additional spectral features.
+    speech_threshold: float, optional
+        Speech probability above this value suppresses music detection.
 
     Returns
     -------
@@ -257,6 +304,7 @@ def detect_music_segments(
         regions.
     """
 
+    _ensure_librosa()
     try:
         logger.info("Loading audio from %s", audio_path)
         y, sr = librosa.load(audio_path, sr=None, mono=True)
@@ -274,7 +322,53 @@ def detect_music_segments(
         )[0]
 
         ratio = perc_rms / (harm_rms + 1e-10)
-        mask = ratio > threshold
+
+        score = ratio
+        if enhanced:
+            logger.info("Computing spectral features for enhanced detection")
+            centroid = librosa.feature.spectral_centroid(
+                y=y, sr=sr, hop_length=hop_length
+            )[0]
+            flux = librosa.onset.onset_strength(
+                y=y, sr=sr, hop_length=hop_length
+            )
+            centroid = centroid / (np.max(centroid) + 1e-10)
+            flux = flux / (np.max(flux) + 1e-10)
+            score = score + 0.5 * centroid + 0.5 * flux
+
+        mask = score > threshold
+
+        if enhanced:
+            logger.info("Applying VAD mask with threshold %s", speech_threshold)
+            vad_model = vad.load_vad_model()
+            vad_result = vad_model({"audio": audio_path})
+            speech_mask = np.zeros_like(mask, dtype=float)
+
+            segments = []
+            if isinstance(vad_result, list):
+                segments = vad_result
+            elif isinstance(vad_result, dict):
+                segs = vad_result.get("speech")
+                if hasattr(segs, "get_timeline"):
+                    segments = list(segs.get_timeline())
+                elif segs is not None:
+                    segments = list(segs)
+            elif hasattr(vad_result, "get_timeline"):
+                segments = list(vad_result.get_timeline())
+            else:
+                segments = list(vad_result)
+
+            for seg in segments:
+                start = getattr(seg, "start", None)
+                end = getattr(seg, "end", None)
+                if start is None or end is None:
+                    start, end = seg[0], seg[1]
+                prob = getattr(seg, "confidence", getattr(seg, "probability", 1.0))
+                s = librosa.time_to_frames(start, sr=sr, hop_length=hop_length)
+                e = librosa.time_to_frames(end, sr=sr, hop_length=hop_length)
+                speech_mask[s:e] = prob
+
+            mask[speech_mask > speech_threshold] = False
 
         segments: List[Tuple[float, float]] = []
         start_time: Optional[float] = None
@@ -329,6 +423,8 @@ def preprocess_pipeline(
     music_threshold: float = 0.5,
     music_min_duration: float = 0.0,
     music_count_warning: int = 1000,
+     enhanced_music_detection: bool = False,
+     speech_threshold: float = 0.5,
     stem: Optional[str] = None,
     resume_outputs: Optional[dict] = None,
 ) -> dict:
@@ -362,6 +458,10 @@ def preprocess_pipeline(
         discarded.
     music_count_warning: int, optional
         Emit a warning when the number of music segments exceeds this count.
+    enhanced_music_detection: bool, optional
+        Enable VAD-aware music detection with additional spectral features.
+    speech_threshold: float, optional
+        Suppress music detection when speech probability exceeds this value.
     stem: str | None, optional
         Base name for generated files. When provided, intermediate and output
         files are prefixed with ``"<stem>."``.
@@ -424,6 +524,8 @@ def preprocess_pipeline(
             threshold=music_threshold,
             min_duration=music_min_duration,
             count_warning=music_count_warning,
+            enhanced=enhanced_music_detection,
+            speech_threshold=speech_threshold,
         )
         outputs["music_segments"] = segments_file
 
@@ -478,6 +580,17 @@ def main() -> None:
         help="Warn when detected music segments exceed this count",
     )
     parser.add_argument(
+        "--enhanced-music-detection",
+        action="store_true",
+        help="Enable VAD-aware music detection",
+    )
+    parser.add_argument(
+        "--speech-threshold",
+        type=float,
+        default=0.5,
+        help="Suppress music detection when speech probability exceeds this",
+    )
+    parser.add_argument(
         "--outdir",
         default="preproc",
         help=(
@@ -503,6 +616,8 @@ def main() -> None:
             music_threshold=args.music_threshold,
             music_min_duration=args.music_min_duration,
             music_count_warning=args.music_count_warning,
+            enhanced_music_detection=args.enhanced_music_detection,
+            speech_threshold=args.speech_threshold,
             stem=args.stem,
         )
     except Exception as exc:  # pragma: no cover - CLI

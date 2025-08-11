@@ -52,6 +52,7 @@ def _process_one(
     output_root: Optional[Path],
     device: str,
     skip_music: bool,
+    enhanced_music_detection: bool,
     music_min_duration: float,
     music_count_warning: int,
     beam_size: Optional[int],
@@ -101,6 +102,7 @@ def _process_one(
             "music_threshold": 0.5,
             "music_min_duration": music_min_duration,
             "music_count_warning": music_count_warning,
+            "enhanced_music_detection": enhanced_music_detection,
         }
         reusable, outputs = (
             is_stage_reusable(media.parent, media.stem, "preproc", str(media), preproc_params)
@@ -128,6 +130,7 @@ def _process_one(
                 music_threshold=0.5,
                 music_min_duration=music_min_duration,
                 music_count_warning=music_count_warning,
+                enhanced_music_detection=enhanced_music_detection,
                 stem=media.stem,
             )
             audio_path = pre_out.get("normalized_wav") or pre_out.get("audio_wav")
@@ -263,6 +266,11 @@ def main() -> int:
     p.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="Device for WhisperX")
     p.add_argument("--skip-music", action="store_true", help="Skip segments overlapping detected music")
     p.add_argument(
+        "--enhanced-music-detection",
+        action="store_true",
+        help="Enable VAD-aware music detection",
+    )
+    p.add_argument(
         "--music-min-duration",
         type=float,
         default=0.0,
@@ -315,6 +323,7 @@ def main() -> int:
                 output_root=output_root,
                 device=args.device,
                 skip_music=args.skip_music,
+                enhanced_music_detection=args.enhanced_music_detection,
                 music_min_duration=args.music_min_duration,
                 music_count_warning=args.music_count_warning,
                 beam_size=args.beam_size,
@@ -345,6 +354,7 @@ def main() -> int:
                         output_root=output_root,  # if None, defaults to media.parent
                         device=args.device,
                         skip_music=args.skip_music,
+                        enhanced_music_detection=args.enhanced_music_detection,
                         music_min_duration=args.music_min_duration,
                         music_count_warning=args.music_count_warning,
                         beam_size=args.beam_size,

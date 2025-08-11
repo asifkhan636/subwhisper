@@ -10,7 +10,7 @@ dependencies:
   # Uncomment the following line to match your CUDA toolkit version
   # - pytorch-cuda=11.8  # requires NVIDIA channel
   - pip:
-      - ctranslate2>=4.3  # use version without pkg_resources
+      - ctranslate2>=4.4  # requires version without pkg_resources
       - torch==1.13.1  # required for pretrained Pyannote models
       - pyannote.audio>=2.1,<3  # required for 'pyannote/voice-activity-detection'
       - speechbrain>=1.0

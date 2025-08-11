@@ -1,4 +1,4 @@
-ctranslate2>=4.3
+ctranslate2>=4.4
 # pin torch and pyannote.audio to versions compatible with the pretrained
 # Pyannote VAD model; mismatched versions can raise runtime warnings or fail
 torch==1.13.1  # required for pretrained Pyannote VAD models

@@ -53,7 +53,9 @@ def _process_one(
     device: str,
     skip_music: bool,
     enhanced_music_detection: bool,
+    music_threshold: float,
     music_min_duration: float,
+    music_min_gap: float,
     music_count_warning: int,
     beam_size: Optional[int],
     clean_intermediates: bool,
@@ -99,8 +101,9 @@ def _process_one(
             "denoise": False,
             "denoise_aggressiveness": 0.85,
             "normalize": True,
-            "music_threshold": 0.5,
+            "music_threshold": music_threshold,
             "music_min_duration": music_min_duration,
+            "music_min_gap": music_min_gap,
             "music_count_warning": music_count_warning,
             "enhanced_music_detection": enhanced_music_detection,
         }
@@ -116,6 +119,9 @@ def _process_one(
                 try:
                     with open(outputs[1], "r", encoding="utf-8") as fh:
                         music_segments = json.load(fh)
+                    music_segments = [
+                        s for s in music_segments if (s[1] - s[0]) >= music_min_duration
+                    ]
                 except Exception:
                     music_segments = None
         else:
@@ -127,8 +133,9 @@ def _process_one(
                 denoise=False,
                 denoise_aggressiveness=0.85,
                 normalize=True,
-                music_threshold=0.5,
+                music_threshold=music_threshold,
                 music_min_duration=music_min_duration,
+                music_min_gap=music_min_gap,
                 music_count_warning=music_count_warning,
                 enhanced_music_detection=enhanced_music_detection,
                 stem=media.stem,
@@ -138,6 +145,9 @@ def _process_one(
             if pre_out.get("music_segments"):
                 with open(pre_out["music_segments"], "r", encoding="utf-8") as fh:
                     music_segments = json.load(fh)
+                music_segments = [
+                    s for s in music_segments if (s[1] - s[0]) >= music_min_duration
+                ]
                 outputs.append(pre_out["music_segments"])
             stage_complete(media.parent, media.stem, "preproc", str(media), preproc_params, outputs)
         downstream_valid = downstream_valid and reusable
@@ -270,9 +280,21 @@ def main() -> int:
         help="Enable VAD-aware music detection",
     )
     p.add_argument(
+        "--music-threshold",
+        type=float,
+        default=0.6,
+        help="Threshold for music detection",
+    )
+    p.add_argument(
+        "--music-min-gap",
+        type=float,
+        default=0.5,
+        help="Merge music segments separated by gaps shorter than this duration",
+    )
+    p.add_argument(
         "--music-min-duration",
         type=float,
-        default=0.0,
+        default=0.5,
         help="Drop detected music segments shorter than this duration in seconds",
     )
     p.add_argument(
@@ -323,7 +345,9 @@ def main() -> int:
                 device=args.device,
                 skip_music=args.skip_music,
                 enhanced_music_detection=args.enhanced_music_detection,
+                music_threshold=args.music_threshold,
                 music_min_duration=args.music_min_duration,
+                music_min_gap=args.music_min_gap,
                 music_count_warning=args.music_count_warning,
                 beam_size=args.beam_size,
                 clean_intermediates=clean_intermediates,
@@ -354,7 +378,9 @@ def main() -> int:
                         device=args.device,
                         skip_music=args.skip_music,
                         enhanced_music_detection=args.enhanced_music_detection,
+                        music_threshold=args.music_threshold,
                         music_min_duration=args.music_min_duration,
+                        music_min_gap=args.music_min_gap,
                         music_count_warning=args.music_count_warning,
                         beam_size=args.beam_size,
                         clean_intermediates=clean_intermediates,

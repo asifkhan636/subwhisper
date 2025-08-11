@@ -1,5 +1,6 @@
 import argparse
 import json
+import shutil
 from itertools import product
 from pathlib import Path
 from typing import Any, Dict
@@ -39,6 +40,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run Subtitle experiments")
     parser.add_argument("config", help="Path to YAML/JSON configuration")
     parser.add_argument("--sweep", action="store_true", help="Run parameter sweep")
+    parser.add_argument(
+        "--keep-run-dir",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Retain run directory after successful completion",
+    )
     args = parser.parse_args()
 
     cfg_path = Path(args.config)
@@ -52,19 +59,33 @@ def main() -> None:
             label = "_".join(f"{k.split('.')[-1]}-{v}" for k, v in params.items())
             run_id = f"run{idx}_{label}"
             conf["run_id"] = run_id
+            keep = conf.get("retain_run_dir", args.keep_run_dir)
             exp = SubtitleExperiment(conf)
-            exp.run()
-            exp.aggregate_results()
-            exp.report()
+            success = False
+            try:
+                exp.run()
+                exp.aggregate_results()
+                exp.report()
+                success = not exp.failures
+            finally:
+                if success and not keep:
+                    shutil.rmtree(exp.run_dir, ignore_errors=True)
     else:
         run_id = base.get("run_id")
         if not run_id:
             run_id = "run"
         base["run_id"] = run_id
+        keep = base.get("retain_run_dir", args.keep_run_dir)
         exp = SubtitleExperiment(base)
-        exp.run()
-        exp.aggregate_results()
-        exp.report()
+        success = False
+        try:
+            exp.run()
+            exp.aggregate_results()
+            exp.report()
+            success = not exp.failures
+        finally:
+            if success and not keep:
+                shutil.rmtree(exp.run_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":  # pragma: no cover

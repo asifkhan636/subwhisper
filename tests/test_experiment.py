@@ -345,7 +345,11 @@ def test_parameter_sweep_outputs_and_aggregation(tmp_path, monkeypatch):
     monkeypatch.setattr("experiment.qc.validate_sync", fake_validate_sync)
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["experiment_runner.py", str(cfg_path), "--sweep"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["experiment_runner.py", str(cfg_path), "--sweep", "--keep-run-dir"],
+    )
     experiment_runner.main()
 
     run_dirs = [p for p in tmp_path.iterdir() if p.is_dir() and p.name.startswith("run")]

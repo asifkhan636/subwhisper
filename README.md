@@ -412,9 +412,12 @@ aggregated results are written to JSON and CSV files.
 
 ## Maintenance
 
-Old run outputs can accumulate over time. The `maintenance.py` helper removes
-large intermediate files and archives completed runs to save space. By default
-it performs a dry run and simply reports the actions:
+By default, run directories created by `experiment_runner.py` are removed after
+successful completion. If you retain them using the `--keep-run-dir` flag or a
+`retain_run_dir` setting in your config, old run outputs can accumulate. The
+`maintenance.py` helper removes large intermediate files and archives completed
+runs to save space. By default it performs a dry run and simply reports the
+actions:
 
 ```bash
 python maintenance.py --output-root runs --days 30

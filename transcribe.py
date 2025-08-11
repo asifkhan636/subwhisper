@@ -90,7 +90,7 @@ def transcribe_and_align(
     compute_type: str = "float32",
     device: Optional[str] = None,
     batch_size: int = 8,
-    beam_size: int = 5,
+    beam_size: Optional[int] = None,
     music_segments: Optional[List[Tuple[float, float]]] = None,
     skip_music: bool = False,
     spellcheck: bool = False,
@@ -115,7 +115,8 @@ def transcribe_and_align(
     batch_size:
         Batch size used for both transcription and alignment.
     beam_size:
-        Beam size for decoder during transcription.
+        Optional beam size for decoder during transcription. When ``None``, the
+        model's default beam size is used.
     music_segments:
         Optional ``(start, end)`` pairs marking regions containing music.
     skip_music:
@@ -160,11 +161,10 @@ def transcribe_and_align(
 
     audio = whisperx.load_audio(audio_path)
     transcribe_kwargs = {"batch_size": batch_size, "language": "en"}
-    sig = inspect.signature(asr_model.transcribe)
-    if "beam_size" in sig.parameters:
-        transcribe_kwargs["beam_size"] = beam_size
-    else:
-        logger.info("ASR model.transcribe does not support 'beam_size'; omitting it.")
+    if beam_size is not None:
+        sig = inspect.signature(asr_model.transcribe)
+        if "beam_size" in sig.parameters:
+            transcribe_kwargs["beam_size"] = beam_size
     try:
         result = asr_model.transcribe(audio, **transcribe_kwargs)
     except Exception as exc:  # pragma: no cover - depends on backend
@@ -288,7 +288,12 @@ def main() -> None:
     parser.add_argument(
         "--batch-size", type=int, default=8, help="Batch size for processing"
     )
-    parser.add_argument("--beam-size", type=int, default=5, help="Beam size")
+    parser.add_argument(
+        "--beam-size",
+        type=int,
+        default=None,
+        help="Beam size (default: model default)",
+    )
     parser.add_argument(
         "--compute-type", default="float32", help="Precision for WhisperX"
     )
@@ -316,7 +321,7 @@ def main() -> None:
     logger.info("Model: %s", args.model)
     logger.info("Compute type: %s", args.compute_type)
     logger.info("Device: %s", args.device)
-    logger.info("Beam size: %d", args.beam_size)
+    logger.info("Beam size: %s", args.beam_size)
     logger.info("Batch size: %d", args.batch_size)
     logger.info("Alignment model: %s", ALIGN_MODEL_NAME)
     logger.info("Output directory: %s", args.outdir)

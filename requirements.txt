@@ -1,8 +1,9 @@
 ctranslate2>=4.4
-# pin torch and pyannote.audio to versions compatible with the pretrained
-# Pyannote VAD model; mismatched versions can raise runtime warnings or fail
-torch==1.13.1  # required for pretrained Pyannote VAD models
-pyannote.audio>=2.1,<3  # required for 'pyannote/vad'
+# Updated to rely on modern releases that replace `pkg_resources` with
+# `importlib.metadata` and drop the old `pytorch-lightning` dependency.
+torch>=2.5.1  # required for Pyannote 3.x
+pyannote.audio>=3.3.2  # uses `lightning` instead of `pytorch-lightning`
+lightning>=2.5.2
 pysubs2>=1.8.0
 speechbrain>=1.0
 whisperx>=3.4.2,<4  # use latest WhisperX

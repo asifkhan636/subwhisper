@@ -4,6 +4,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 torch_stub = types.SimpleNamespace(
     cuda=types.SimpleNamespace(is_available=lambda: False)
 )
@@ -438,4 +440,35 @@ def test_cli_stem_flag(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
 
     assert str(tmp_path / "MyEp.segments.json") in captured.out
+
+
+def test_pyannote_version_mismatch_raises(monkeypatch, tmp_path):
+    """Version check errors when model requirements diverge."""
+
+    import urllib.request
+
+    def fake_urlopen(url, timeout=5):
+        class DummyResp:
+            def __init__(self, text: str):
+                self.text = text
+
+            def read(self) -> bytes:
+                return self.text.encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        if "pyannote/vad" in url:
+            text = "pyannote.audio>=2.1,<3"
+        else:
+            text = "pyannote.audio<2"
+        return DummyResp(text)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(RuntimeError):
+        transcribe.transcribe_and_align("dummy.wav", str(tmp_path))
 

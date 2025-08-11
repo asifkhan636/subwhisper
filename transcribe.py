@@ -137,7 +137,9 @@ def transcribe_and_align(
     dict
         Mapping containing ``transcript_json`` and ``segments_json`` paths.
     """
-    warn_if_incompatible_pyannote()
+    _msg = warn_if_incompatible_pyannote()
+    if _msg:
+        logger.warning(_msg)
 
     if resume_outputs and all(
         resume_outputs.get(k) and os.path.exists(resume_outputs[k])

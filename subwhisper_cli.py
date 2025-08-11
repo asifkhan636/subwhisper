@@ -244,7 +244,9 @@ def _process_one(
 
 
 def main() -> int:
-    warn_if_incompatible_pyannote()
+    _msg = warn_if_incompatible_pyannote()
+    if _msg:
+        logger.warning(_msg)
     p = argparse.ArgumentParser(description="subwhisper - single command pipeline")
     p.add_argument("--input", required=True, help="Input media file or directory")
     p.add_argument("--output-root", help="Root directory for outputs (default: same as input file parent for single-file; for folder, mirrors per file parent)")

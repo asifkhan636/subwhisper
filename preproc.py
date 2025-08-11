@@ -261,9 +261,9 @@ def normalize_audio(input_wav: str, output_wav: str, enabled: bool = True) -> st
 def detect_music_segments(
     audio_path: str,
     segments_file: str,
-    threshold: float = 0.5,
-    min_duration: float = 0.0,
-    min_gap: float = 0.0,
+    threshold: float = 0.6,
+    min_duration: float = 0.5,
+    min_gap: float = 0.5,
     count_warning: int = 1000,
     enhanced: bool = False,
     speech_threshold: float = 0.5,
@@ -286,14 +286,14 @@ def detect_music_segments(
         Path where ``music_segments.json`` will be written.
     threshold: float, optional
         Minimum percussive-to-harmonic energy ratio to qualify as a music
-        segment. Defaults to ``0.5``.
+        segment. Defaults to ``0.6``.
     min_duration: float, optional
-        Discard segments shorter than this many seconds. Defaults to ``0.0``
-        (no minimum).
+        Discard segments shorter than this many seconds. Defaults to ``0.5``
+        seconds.
     min_gap: float, optional
         Merge music segments separated by non-music gaps shorter than this
-        duration in seconds. Defaults to ``0.0`` which only merges touching
-        or overlapping segments.
+        duration in seconds. Defaults to ``0.5`` which merges gaps shorter
+        than half a second.
     count_warning: int, optional
         Emit a warning when the number of detected segments exceeds this
         value. Defaults to ``1000``.
@@ -458,9 +458,9 @@ def preprocess_pipeline(
     denoise: bool = False,
     denoise_aggressiveness: float = 0.85,
     normalize: bool = False,
-    music_threshold: float = 0.5,
-    music_min_duration: float = 0.0,
-    music_min_gap: float = 0.0,
+    music_threshold: float = 0.6,
+    music_min_duration: float = 0.5,
+    music_min_gap: float = 0.5,
     music_count_warning: int = 1000,
      enhanced_music_detection: bool = False,
      speech_threshold: float = 0.5,
@@ -491,13 +491,13 @@ def preprocess_pipeline(
         Apply loudness normalization when ``True``.
     music_threshold: float, optional
         Threshold passed to :func:`detect_music_segments`. Detected segments are
-        saved to ``music_segments.json`` inside ``outdir``.
+        saved to ``music_segments.json`` inside ``outdir``. Defaults to ``0.6``.
     music_min_duration: float, optional
         Minimum duration for detected music segments; shorter segments are
-        discarded.
+        discarded. Defaults to ``0.5`` seconds.
     music_min_gap: float, optional
         Merge detected music segments separated by non-music gaps shorter than
-        this duration in seconds. Defaults to ``0.0``.
+        this duration in seconds. Defaults to ``0.5``.
     music_count_warning: int, optional
         Emit a warning when the number of music segments exceeds this count.
     enhanced_music_detection: bool, optional
@@ -604,7 +604,7 @@ def main() -> None:
     parser.add_argument(
         "--music-threshold",
         type=float,
-        default=0.5,
+        default=0.6,
         help=(
             "Threshold for music detection; detected segments are saved to "
             "music_segments.json in --outdir"
@@ -613,13 +613,13 @@ def main() -> None:
     parser.add_argument(
         "--music-min-duration",
         type=float,
-        default=0.0,
+        default=0.5,
         help="Drop detected music segments shorter than this duration in seconds",
     )
     parser.add_argument(
         "--music-min-gap",
         type=float,
-        default=0.0,
+        default=0.5,
         help="Merge music segments separated by gaps shorter than this duration",
     )
     parser.add_argument(

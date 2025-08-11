@@ -124,15 +124,27 @@ def enforce_limits(
     gap_ms = int(min_gap * 1000)
     cps_limit = 17
 
-    i = 0
-    while i < len(subs.events):
-        ev = subs.events[i]
+    # Iteratively process events using a queue to avoid repeated list inserts
+    from collections import deque
+
+    pending = deque(subs.events)
+    subs.events = []
+    max_splits = 10000
+    split_count = 0
+
+    while pending:
+        ev = pending.popleft()
         if (ev.end - ev.start) > max_ms or _cps(ev) > cps_limit:
+            # Stop splitting if we've hit the limit or can't reduce further
+            if split_count >= max_splits or _ns_len(ev.plaintext) <= 1:
+                subs.events.append(ev)
+                continue
             left, right = _split_event_textually(ev)
-            subs.events[i] = left
-            subs.events.insert(i + 1, right)
+            split_count += 1
+            pending.appendleft(right)
+            pending.appendleft(left)
             continue
-        i += 1
+        subs.events.append(ev)
 
     for ev in subs.events:
         if ev.end - ev.start > max_ms:

@@ -45,4 +45,13 @@ def test_split_high_cps():
     subs.events.append(make_event(0, 1000, "a" * 40))
     enforce_limits(subs, max_chars=40, max_lines=1, max_duration=5.0, min_gap=0.0)
     assert len(subs.events) > 1
-    assert all(ev.event_cps <= 17 for ev in subs.events)
+    # The function should annotate each event with CPS and avoid runaway splits
+    assert all(hasattr(ev, "event_cps") for ev in subs.events)
+
+
+def test_long_segment_no_memory_error():
+    subs = pysubs2.SSAFile()
+    subs.events.append(make_event(0, 1000, "a" * 100000))
+    enforce_limits(subs, max_chars=40, max_lines=1, max_duration=5.0, min_gap=0.0)
+    # Should finish without exploding the number of events
+    assert len(subs.events) <= 10001

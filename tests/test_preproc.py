@@ -161,7 +161,7 @@ def test_normalize_audio_invokes_ffmpeg_when_enabled(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     "threshold,expected",
     [
-        (0.5, [(1.0, 2.0), (3.0, 4.0)]),
+        (0.5, [(2.0, 4.0)]),
         (0.7, [(3.0, 4.0)]),
     ],
 )
@@ -233,7 +233,53 @@ def test_detect_music_segments_drops_short(monkeypatch, tmp_path):
         "dummy.wav", str(seg_file), min_duration=1.0
     )
 
-    assert segments == [(0.0, 2.0)]
+    assert segments == [(0.0, 2.5)]
+
+
+def test_detect_music_segments_smooths_flips(monkeypatch, tmp_path):
+    """Brief non-music flips inside a music region should be removed."""
+    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(3), 22050))
+    monkeypatch.setattr(
+        preproc.librosa.effects,
+        "hpss",
+        lambda y: (np.zeros(3), np.zeros(3)),
+    )
+    harm_rms = np.array([[1, 1, 1]])
+    perc_rms = np.array([[1, 0, 1]])
+    rms_mock = MagicMock(side_effect=[harm_rms, perc_rms])
+    monkeypatch.setattr(preproc.librosa.feature, "rms", rms_mock)
+    monkeypatch.setattr(
+        preproc.librosa, "frames_to_time", lambda idx, sr, hop_length: float(idx)
+    )
+
+    seg_file = tmp_path / "music_segments.json"
+    segments = preproc.detect_music_segments("dummy.wav", str(seg_file))
+
+    assert segments == [(0.0, 3.0)]
+
+
+def test_detect_music_segments_merges_small_gaps(monkeypatch, tmp_path):
+    """Segments separated by short gaps should be merged when min_gap is set."""
+    monkeypatch.setattr(preproc.librosa, "load", lambda *a, **k: (np.zeros(7), 22050))
+    monkeypatch.setattr(
+        preproc.librosa.effects,
+        "hpss",
+        lambda y: (np.zeros(7), np.zeros(7)),
+    )
+    harm_rms = np.array([[1, 1, 1, 1, 1, 1, 1]])
+    perc_rms = np.array([[1, 1, 0, 0, 0, 1, 1]])
+    rms_mock = MagicMock(side_effect=[harm_rms, perc_rms])
+    monkeypatch.setattr(preproc.librosa.feature, "rms", rms_mock)
+    monkeypatch.setattr(
+        preproc.librosa, "frames_to_time", lambda idx, sr, hop_length: idx * 0.5
+    )
+
+    seg_file = tmp_path / "music_segments.json"
+    segments = preproc.detect_music_segments(
+        "dummy.wav", str(seg_file), min_gap=2.0
+    )
+
+    assert segments == [(0.0, 3.5)]
 
 
 def test_detect_music_segments_warns_on_many_segments(monkeypatch, tmp_path, caplog):
@@ -254,7 +300,7 @@ def test_detect_music_segments_warns_on_many_segments(monkeypatch, tmp_path, cap
     seg_file = tmp_path / "music_segments.json"
     with caplog.at_level(logging.WARNING, logger=preproc.logger.name):
         preproc.detect_music_segments(
-            "dummy.wav", str(seg_file), count_warning=1
+            "dummy.wav", str(seg_file), count_warning=0
         )
 
     assert any("exceeds warning threshold" in r.message for r in caplog.records)

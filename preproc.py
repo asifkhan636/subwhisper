@@ -263,6 +263,7 @@ def detect_music_segments(
     segments_file: str,
     threshold: float = 0.5,
     min_duration: float = 0.0,
+    min_gap: float = 0.0,
     count_warning: int = 1000,
     enhanced: bool = False,
     speech_threshold: float = 0.5,
@@ -289,6 +290,10 @@ def detect_music_segments(
     min_duration: float, optional
         Discard segments shorter than this many seconds. Defaults to ``0.0``
         (no minimum).
+    min_gap: float, optional
+        Merge music segments separated by non-music gaps shorter than this
+        duration in seconds. Defaults to ``0.0`` which only merges touching
+        or overlapping segments.
     count_warning: int, optional
         Emit a warning when the number of detected segments exceeds this
         value. Defaults to ``1000``.
@@ -338,6 +343,17 @@ def detect_music_segments(
 
         mask = score > threshold
 
+        # Smooth mask to suppress brief flips between music and non-music
+        # regions. A simple majority filter over a small window removes
+        # isolated on/off frames that would otherwise produce tiny segments.
+        kernel_size = 5
+        pad = kernel_size // 2
+        padded = np.pad(mask.astype(int), (pad, pad), mode="edge")
+        mask = (
+            np.convolve(padded, np.ones(kernel_size, dtype=int), mode="valid")
+            >= (kernel_size // 2 + 1)
+        )
+
         if enhanced:
             logger.info("Applying VAD mask with threshold %s", speech_threshold)
             vad_model = vad.load_vad_model()
@@ -386,10 +402,10 @@ def detect_music_segments(
             )
             segments.append((start_time, end_time))
 
-        # Merge adjacent or overlapping segments
+        # Merge adjacent, overlapping, or closely spaced segments
         merged: List[Tuple[float, float]] = []
         for seg in segments:
-            if merged and seg[0] <= merged[-1][1]:
+            if merged and seg[0] <= merged[-1][1] + min_gap:
                 merged[-1] = (merged[-1][0], max(merged[-1][1], seg[1]))
             else:
                 merged.append(seg)
@@ -422,6 +438,7 @@ def preprocess_pipeline(
     normalize: bool = False,
     music_threshold: float = 0.5,
     music_min_duration: float = 0.0,
+    music_min_gap: float = 0.0,
     music_count_warning: int = 1000,
      enhanced_music_detection: bool = False,
      speech_threshold: float = 0.5,
@@ -456,6 +473,9 @@ def preprocess_pipeline(
     music_min_duration: float, optional
         Minimum duration for detected music segments; shorter segments are
         discarded.
+    music_min_gap: float, optional
+        Merge detected music segments separated by non-music gaps shorter than
+        this duration in seconds. Defaults to ``0.0``.
     music_count_warning: int, optional
         Emit a warning when the number of music segments exceeds this count.
     enhanced_music_detection: bool, optional
@@ -523,6 +543,7 @@ def preprocess_pipeline(
             segments_file,
             threshold=music_threshold,
             min_duration=music_min_duration,
+            min_gap=music_min_gap,
             count_warning=music_count_warning,
             enhanced=enhanced_music_detection,
             speech_threshold=speech_threshold,
@@ -574,6 +595,12 @@ def main() -> None:
         help="Drop detected music segments shorter than this duration in seconds",
     )
     parser.add_argument(
+        "--music-min-gap",
+        type=float,
+        default=0.0,
+        help="Merge music segments separated by gaps shorter than this duration",
+    )
+    parser.add_argument(
         "--music-count-warning",
         type=int,
         default=1000,
@@ -615,6 +642,7 @@ def main() -> None:
             normalize=args.normalize,
             music_threshold=args.music_threshold,
             music_min_duration=args.music_min_duration,
+            music_min_gap=args.music_min_gap,
             music_count_warning=args.music_count_warning,
             enhanced_music_detection=args.enhanced_music_detection,
             speech_threshold=args.speech_threshold,

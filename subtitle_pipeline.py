@@ -38,8 +38,17 @@ def load_segments(path: Path) -> pysubs2.SSAFile:
     pysubs2.SSAFile
         Subtitle data parsed by :func:`pysubs2.load_from_whisper`.
     """
-    with path.open() as f:
-        data: Any = json.load(f)
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data: Any = json.load(f)
+    except UnicodeDecodeError as exc:
+        raise UnicodeDecodeError(
+            exc.encoding,
+            exc.object,
+            exc.start,
+            exc.end,
+            f"{exc.reason}. Expected UTF-8 JSON in {path}",
+        ) from exc
 
     # `pysubs2.load_from_whisper` can work with either a list of segment
     # dictionaries or a full Whisper result containing a ``segments`` field.

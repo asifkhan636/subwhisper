@@ -53,6 +53,7 @@ def _process_one(
     music_min_gap: float,
     music_count_warning: int,
     beam_size: Optional[int],
+    language: Optional[str],
     clean_intermediates: bool,
     purge_all_on_success: bool,
     write_transcript_flag: bool,
@@ -154,6 +155,7 @@ def _process_one(
                 "compute_type": "float32",
                 "device": device,
                 "batch_size": 8,
+                "language": language,
                 "skip_music": skip_music,
             }
             if beam_size is not None:
@@ -179,6 +181,7 @@ def _process_one(
                     device=device,
                     batch_size=8,
                     beam_size=beam_size,
+                    language=language,
                     music_segments=music_segments,
                     skip_music=skip_music,
                     spellcheck=False,
@@ -275,6 +278,11 @@ def main() -> int:
     p.add_argument("--input", required=True, help="Input media file or directory")
     p.add_argument("--output-root", help="Root directory for outputs (default: same as input file parent for single-file; for folder, mirrors per file parent)")
     p.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="Device for Faster-Whisper")
+    p.add_argument(
+        "--language",
+        default="auto",
+        help="Language code to force during transcription (default: auto-detect)",
+    )
     p.add_argument("--skip-music", action="store_true", help="Skip segments overlapping detected music")
     p.add_argument(
         "--enhanced-music-detection",
@@ -352,6 +360,7 @@ def main() -> int:
                 music_min_gap=args.music_min_gap,
                 music_count_warning=args.music_count_warning,
                 beam_size=args.beam_size,
+                language=args.language,
                 clean_intermediates=clean_intermediates,
                 purge_all_on_success=args.purge_all_on_success,
                 write_transcript_flag=args.write_transcript,
@@ -385,6 +394,7 @@ def main() -> int:
                         music_min_gap=args.music_min_gap,
                         music_count_warning=args.music_count_warning,
                         beam_size=args.beam_size,
+                        language=args.language,
                         clean_intermediates=clean_intermediates,
                         purge_all_on_success=args.purge_all_on_success,
                         write_transcript_flag=args.write_transcript,

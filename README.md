@@ -278,7 +278,9 @@ python transcribe.py preproc/normalized.wav --outdir transcript \
 - `--outdir DIR` – directory where `transcript.json` and `segments.json` are
   written.
 - `--model NAME` – Whisper model to load (default `large-v3-turbo`).
-- `--batch-size N` – batch size for both transcription and alignment
+- `--language CODE` – force a language code such as `en` or `es`; by default
+  Faster-Whisper auto-detects the spoken language.
+- `--batch-size N` – batch size for transcription
   (default `8`).
 - `--beam-size N` – beam search width used during decoding (default `5`).
 - `--compute-type TYPE` – precision for Faster-Whisper such as `float16` or

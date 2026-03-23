@@ -78,7 +78,6 @@ def test_forwards_options_with_batched_pipeline(tmp_path, monkeypatch):
     }
     assert calls["transcribe"] == {
         "audio_path": "dummy.wav",
-        "language": "en",
         "word_timestamps": True,
         "vad_filter": True,
         "beam_size": 2,
@@ -127,7 +126,6 @@ def test_uses_model_directly_for_batch_size_one(tmp_path, monkeypatch):
     assert outputs["segments_json"] == str(tmp_path / "segments.json")
     assert calls["transcribe"] == {
         "audio_path": "dummy.wav",
-        "language": "en",
         "word_timestamps": True,
         "vad_filter": True,
     }
@@ -155,6 +153,38 @@ def test_materializes_segment_generator(tmp_path, monkeypatch):
     transcribe.transcribe_and_align("dummy.wav", str(tmp_path), device="cpu", batch_size=1)
 
     assert consumed["value"] is True
+
+
+def test_forwards_explicit_language_override(tmp_path, monkeypatch):
+    calls = {}
+
+    class FakeWhisperModel:
+        def __init__(self, model, device, compute_type):
+            pass
+
+        def transcribe(self, audio_path, **kwargs):
+            calls["transcribe"] = {"audio_path": audio_path, **kwargs}
+            return (
+                [DummySegment(0.0, 1.0, "Hallo", [DummyWord("Hallo", 0.0, 1.0)])],
+                types.SimpleNamespace(language="de", language_probability=1.0),
+            )
+
+    monkeypatch.setattr(transcribe, "WhisperModel", FakeWhisperModel)
+
+    transcribe.transcribe_and_align(
+        "dummy.wav",
+        str(tmp_path),
+        device="cpu",
+        batch_size=1,
+        language="de",
+    )
+
+    assert calls["transcribe"] == {
+        "audio_path": "dummy.wav",
+        "language": "de",
+        "word_timestamps": True,
+        "vad_filter": True,
+    }
 
 
 def test_mark_music(tmp_path, monkeypatch):
@@ -309,6 +339,7 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
         assert kwargs["beam_size"] == 2
         assert kwargs["compute_type"] == "float16"
         assert kwargs["device"] == "cpu"
+        assert kwargs["language"] == "auto"
         assert kwargs["music_segments"] == [[0.0, 1.0]]
         assert kwargs["spellcheck"] is False
         return {
@@ -349,6 +380,29 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
     assert "Model: tiny" in caplog.text
     assert "Batch size: 4" in caplog.text
     assert "Device: cpu" in caplog.text
+
+
+def test_cli_language_flag(tmp_path, monkeypatch):
+    def fake_transcribe(audio_path, outdir, **kwargs):
+        assert kwargs["language"] == "es"
+        return {
+            "segments_json": str(tmp_path / "segments.json"),
+            "transcript_json": str(tmp_path / "transcript.json"),
+        }
+
+    monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
+
+    argv = [
+        "transcribe.py",
+        "foo.wav",
+        "--outdir",
+        str(tmp_path),
+        "--language",
+        "es",
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    transcribe.main()
 
 
 def test_cli_spellcheck_flag(tmp_path, monkeypatch):

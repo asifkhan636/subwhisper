@@ -111,7 +111,8 @@ python subwhisper_cli.py --input "…/Season 9" --resume-clean 14
 ## 7) Quick tips
 
 - If your computer has a supported NVIDIA GPU, try `--device cuda` for speed.
-- Cleaner audio → better subtitles. If possible, use the English audio track and reduce loud background music.
+- Cleaner audio -> better subtitles. Reduce loud background music when possible.
+- Subwhisper now auto-detects the spoken language. Use `--language <code>` only if you want to force one.
 
 ## Troubleshooting (short)
 

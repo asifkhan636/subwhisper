@@ -72,6 +72,7 @@ def _build_internal_job(
     outdir: str,
     model: str,
     device: str | None,
+    language: str | None,
     compute_type: str | None,
     batch_size: str | None,
     beam_size: str | None,
@@ -95,6 +96,8 @@ def _build_internal_job(
     ]
     if device:
         transcribe_cmd.extend(["--device", device])
+    if language and language.lower() != "auto":
+        transcribe_cmd.extend(["--language", language])
     if compute_type:
         transcribe_cmd.extend(["--compute-type", compute_type])
     if batch_size:
@@ -169,8 +172,6 @@ def _translate_whisperx_command(command: str) -> list[list[str]]:
         raise ValueError("Legacy whisperx command must include --output_dir.")
     if args["output_format"] != "srt":
         raise ValueError("Only '--output_format srt' is supported.")
-    if args["language"] != "en":
-        raise ValueError("Only English transcription is supported.")
     if args["task"] != "transcribe":
         raise ValueError("Only '--task transcribe' is supported.")
 
@@ -179,6 +180,7 @@ def _translate_whisperx_command(command: str) -> list[list[str]]:
         outdir=os.path.normpath(args["output_dir"]),
         model=args["model"],
         device=args["device"],
+        language=args["language"],
         compute_type=args["compute_type"],
         batch_size=args["batch_size"],
         beam_size=args["beam_size"],
@@ -196,6 +198,7 @@ def _default_jobs(audio: str, outdir: str) -> list[list[list[str]]]:
             outdir=os.path.join(outdir, "large"),
             model="large-v3-turbo",
             device="cuda",
+            language=None,
             compute_type="float16",
             batch_size="4",
             beam_size="5",
@@ -205,8 +208,9 @@ def _default_jobs(audio: str, outdir: str) -> list[list[list[str]]]:
         _build_internal_job(
             audio=audio,
             outdir=os.path.join(outdir, "medium"),
-            model="medium.en",
+            model="medium",
             device="cuda",
+            language=None,
             compute_type="float16",
             batch_size="4",
             beam_size="5",
@@ -216,8 +220,9 @@ def _default_jobs(audio: str, outdir: str) -> list[list[list[str]]]:
         _build_internal_job(
             audio=audio,
             outdir=os.path.join(outdir, "cpu_float32"),
-            model="medium.en",
+            model="medium",
             device="cpu",
+            language=None,
             compute_type="float32",
             batch_size="1",
             beam_size=None,
@@ -227,8 +232,9 @@ def _default_jobs(audio: str, outdir: str) -> list[list[list[str]]]:
         _build_internal_job(
             audio=audio,
             outdir=os.path.join(outdir, "cpu_int8"),
-            model="small.en",
+            model="small",
             device="cpu",
+            language=None,
             compute_type="int8",
             batch_size="1",
             beam_size=None,

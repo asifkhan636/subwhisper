@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Iterable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import ctranslate2
 import pysubs2
@@ -41,6 +41,10 @@ CUDA_COMPUTE_TYPES = {
     "int8_float16",
     "float16",
     "float32",
+}
+
+SPELLCHECK_LANGUAGE_MAP = {
+    "en": "en-US",
 }
 
 
@@ -85,6 +89,23 @@ def _validate_runtime_options(device: str, compute_type: str) -> None:
         )
 
 
+def _normalize_language(language: Optional[str]) -> Optional[str]:
+    """Translate CLI/user language input into Faster-Whisper input."""
+
+    if language is None:
+        return None
+    normalized = language.strip().lower()
+    return None if normalized in {"", "auto"} else normalized
+
+
+def _spellcheck_language(language: Optional[str]) -> str:
+    """Return a LanguageTool language code for the detected/forced language."""
+
+    if not language:
+        return "en-US"
+    return SPELLCHECK_LANGUAGE_MAP.get(language, language)
+
+
 def _normalize_segment(segment) -> dict:
     """Convert a Faster-Whisper segment into the repo's JSON schema."""
 
@@ -122,17 +143,19 @@ def _transcribe_segments(
     compute_type: str,
     batch_size: int,
     beam_size: Optional[int],
-) -> List[dict]:
+    language: Optional[str],
+) -> tuple[List[dict], Optional[str]]:
     """Run Faster-Whisper and return normalized segments."""
 
     model = WhisperModel(model_name, device=device, compute_type=compute_type)
     engine = BatchedInferencePipeline(model=model) if batch_size > 1 else model
 
     transcribe_kwargs = {
-        "language": "en",
         "word_timestamps": True,
         "vad_filter": True,
     }
+    if language is not None:
+        transcribe_kwargs["language"] = language
     if beam_size is not None:
         transcribe_kwargs["beam_size"] = beam_size
     if batch_size > 1:
@@ -154,7 +177,10 @@ def _transcribe_segments(
         getattr(info, "language", "unknown"),
         getattr(info, "language_probability", 0.0),
     )
-    return [_normalize_segment(segment) for segment in raw_segments]
+    return (
+        [_normalize_segment(segment) for segment in raw_segments],
+        getattr(info, "language", None),
+    )
 
 
 def transcribe_and_align(
@@ -169,6 +195,7 @@ def transcribe_and_align(
     skip_music: bool = False,
     spellcheck: bool = False,
     stem: Optional[str] = None,
+    language: Optional[str] = None,
     resume_outputs: Optional[dict] = None,
 ) -> dict:
     """Transcribe ``audio_path`` and emit the existing JSON output schema."""
@@ -186,15 +213,17 @@ def transcribe_and_align(
     if device is None:
         device = _default_device()
     _validate_runtime_options(device, compute_type)
+    language = _normalize_language(language)
     logger.info("Device: %s", device)
 
-    segments = _transcribe_segments(
+    segments, detected_language = _transcribe_segments(
         audio_path=audio_path,
         model_name=model,
         device=device,
         compute_type=compute_type,
         batch_size=batch_size,
         beam_size=beam_size,
+        language=language,
     )
 
     final_segments: List[dict] = []
@@ -236,7 +265,7 @@ def transcribe_and_align(
 
     if spellcheck:
         subs = pysubs2.load_from_whisper(simple_segments)
-        spellcheck_lines(subs)
+        spellcheck_lines(subs, lang=_spellcheck_language(detected_language or language))
         for seg, ev in zip(simple_segments, subs.events):
             seg["text"] = ev.plaintext
 
@@ -284,6 +313,11 @@ def main() -> None:
         "--compute-type", default="float32", help="Precision for Faster-Whisper"
     )
     parser.add_argument(
+        "--language",
+        default="auto",
+        help="Language code to force (default: auto-detect)",
+    )
+    parser.add_argument(
         "--music-segments",
         help="JSON file containing a list of [start, end] music ranges",
     )
@@ -309,6 +343,7 @@ def main() -> None:
     logger.info("Device: %s", args.device)
     logger.info("Beam size: %s", args.beam_size)
     logger.info("Batch size: %d", args.batch_size)
+    logger.info("Language: %s", args.language)
     logger.info("Output directory: %s", args.outdir)
     logger.info("Music segments: %s", args.music_segments or "None")
     logger.info("Filename stem: %s", args.stem or "None")
@@ -330,6 +365,7 @@ def main() -> None:
         skip_music=args.skip_music,
         spellcheck=args.spellcheck,
         stem=args.stem,
+        language=args.language,
     )
     logger.info("JSON output written to %s", outputs["segments_json"])
     print(outputs["segments_json"])

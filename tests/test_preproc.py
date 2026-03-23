@@ -4,6 +4,7 @@ import types
 import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from importlib.machinery import ModuleSpec
 
 import numpy as np
 import pytest
@@ -17,17 +18,22 @@ librosa_stub.load = lambda *a, **k: None
 librosa_stub.stream = lambda *a, **k: iter([])
 librosa_stub.effects = types.SimpleNamespace(hpss=lambda y: ([], []))
 librosa_stub.feature = types.SimpleNamespace(rms=lambda *a, **k: np.array([[0]]))
+librosa_stub.onset = types.SimpleNamespace(onset_strength=lambda *a, **k: np.array([0]))
 librosa_stub.frames_to_time = lambda idx, sr, hop_length: float(idx)
+librosa_stub.time_to_frames = lambda t, sr, hop_length: int(t)
+librosa_stub.__spec__ = ModuleSpec("librosa", loader=None)
 sys.modules.setdefault("librosa", librosa_stub)
 
 sf_stub = types.ModuleType("soundfile")
 sf_stub.read = lambda *a, **k: ([], 16000)
 sf_stub.info = lambda *a, **k: types.SimpleNamespace(samplerate=16000)
 sf_stub.write = lambda *a, **k: None
+sf_stub.__spec__ = ModuleSpec("soundfile", loader=None)
 sys.modules.setdefault("soundfile", sf_stub)
 
 nr_stub = types.ModuleType("noisereduce")
 nr_stub.reduce_noise = lambda *a, **k: None
+nr_stub.__spec__ = ModuleSpec("noisereduce", loader=None)
 sys.modules.setdefault("noisereduce", nr_stub)
 
 # Ensure repository root on path for importing ``preproc``.
@@ -35,6 +41,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+sys.modules.pop("preproc", None)
 import preproc
 
 
@@ -404,6 +411,7 @@ def test_detect_music_segments_vad_suppresses(monkeypatch, tmp_path):
         preproc.librosa.feature,
         "spectral_centroid",
         lambda y, sr, hop_length: np.array([[0.1, 0.1, 0.1, 0.1]]),
+        raising=False,
     )
     monkeypatch.setattr(
         preproc.librosa.onset,
@@ -414,14 +422,20 @@ def test_detect_music_segments_vad_suppresses(monkeypatch, tmp_path):
         preproc.librosa, "frames_to_time", lambda idx, sr, hop_length: float(idx)
     )
     monkeypatch.setattr(
-        preproc.librosa, "time_to_frames", lambda t, sr, hop_length: int(t)
+        preproc.librosa, "time_to_frames", lambda t, sr, hop_length: int(t), raising=False
     )
 
     class DummyVAD:
         def __call__(self, inp):
             return [SimpleNamespace(start=1.0, end=3.0, confidence=1.0)]
 
-    monkeypatch.setattr(preproc.vad, "load_vad_model", lambda: DummyVAD())
+    seen = {}
+
+    def fake_load_vad_model(**kwargs):
+        seen.update(kwargs)
+        return DummyVAD()
+
+    monkeypatch.setattr(preproc.vad, "load_vad_model", fake_load_vad_model)
 
     seg_file = tmp_path / "music_segments.json"
     segments = preproc.detect_music_segments(
@@ -429,6 +443,7 @@ def test_detect_music_segments_vad_suppresses(monkeypatch, tmp_path):
     )
 
     assert segments == [(0.0, 1.0), (3.0, 4.0)]
+    assert seen["threshold"] == 0.5
 
 
 def test_detect_music_segments_streams_large_files(monkeypatch, tmp_path):

@@ -5,18 +5,16 @@ import sys
 import types
 from typing import Any, Dict
 import yaml
+from importlib.machinery import ModuleSpec
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-sys.modules["whisperx"] = types.ModuleType("whisperx")
-sys.modules["torch"] = types.ModuleType("torch")
-sys.modules["noisereduce"] = types.ModuleType("noisereduce")
-sys.modules["librosa"] = types.ModuleType("librosa")
-sys.modules["soundfile"] = types.ModuleType("soundfile")
-sys.modules["jiwer"] = types.ModuleType("jiwer")
-sys.modules["pysubs2"] = types.ModuleType("pysubs2")
+for name in ["whisperx", "torch", "noisereduce", "librosa", "soundfile", "jiwer", "pysubs2"]:
+    mod = types.ModuleType(name)
+    mod.__spec__ = ModuleSpec(name, loader=None)
+    sys.modules[name] = mod
 from experiment import SubtitleExperiment
 import experiment_runner
 sys.modules.pop("whisperx", None)

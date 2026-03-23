@@ -27,6 +27,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import subwhisper_cli
 from subwhisper_cli import _resolve_outputs, _process_one
 
+sys.modules.pop("preproc", None)
+sys.modules.pop("transcribe", None)
+sys.modules.pop("subtitle_pipeline", None)
+sys.modules.pop("corrections", None)
+
 
 def test_no_sync_flag_absent():
     cli_path = Path(__file__).resolve().parents[1] / "subwhisper_cli.py"

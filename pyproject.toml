@@ -5,20 +5,19 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "subwhisper"
 version = "0.1.0"
-description = "Subtitle generation using WhisperX"
+description = "Subtitle generation using Faster-Whisper"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [{name = "Subwhisper Contributors"}]
 dependencies = [
-    "ctranslate2>=4.3",
-    "torch==1.13.1",
-    "pyannote.audio==2.1.1",
+    "ctranslate2>=4.4,<5",
+    "faster-whisper>=1.2,<2",
+    "numpy>=1.26,<3",
     "pysubs2>=1.8.0",
-    "speechbrain>=1.0",
-    "whisperx>=3.4.2,<4",
     "librosa>=0.10",
     "noisereduce>=3.0",
+    "soundfile>=0.12",
     "packaging",
     "rich",
     "jiwer>=3.0",

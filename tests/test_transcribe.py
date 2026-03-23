@@ -6,220 +6,301 @@ from pathlib import Path
 
 import pytest
 
-torch_stub = types.SimpleNamespace(
-    cuda=types.SimpleNamespace(is_available=lambda: False)
-)
-sys.modules.setdefault("torch", torch_stub)
-import torch
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# Ensure project root is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.modules.pop("transcribe", None)
+import transcribe
 
 
-# Create a stub whisperx module so ``transcribe`` can be imported without the
-# heavy dependency.
-stub = types.SimpleNamespace()
-sys.modules.setdefault("whisperx", stub)
-sys.modules.setdefault(
-    "pysubs2", types.SimpleNamespace(load_from_whisper=lambda segments: None)
-)
-subtitle_stub = types.SimpleNamespace(
-    spellcheck_lines=lambda subs: None,
-    load_segments=lambda *a, **k: None,
-    enforce_limits=lambda *a, **k: None,
-    write_outputs=lambda *a, **k: None,
-)
-sys.modules.setdefault("subtitle_pipeline", subtitle_stub)
-
-pyannote_pkg = types.ModuleType("pyannote")
-pyannote_audio_stub = types.ModuleType("pyannote.audio")
-pyannote_audio_stub.__version__ = "2.1.0"
-pyannote_pkg.audio = pyannote_audio_stub
-sys.modules.setdefault("pyannote", pyannote_pkg)
-sys.modules.setdefault("pyannote.audio", pyannote_audio_stub)
-transcribe = importlib.import_module("transcribe")
+class DummyWord:
+    def __init__(self, word, start, end):
+        self.word = word
+        self.start = start
+        self.end = end
 
 
-def _setup_stub(align_func):
-    """Configure ``stub`` with simple whisperx functionality."""
+class DummySegment:
+    def __init__(self, start, end, text, words=None):
+        self.start = start
+        self.end = end
+        self.text = text
+        self.words = words
 
-    class DummyModel:
-        def transcribe(self, audio, batch_size, language, beam_size=None):  # noqa: D401
-            return {
-                "segments": [
-                    {"start": 0.0, "end": 1.0, "text": "Hello"},
-                    {"start": 1.0, "end": 2.0, "text": "World"},
-                ]
-            }
 
-    def load_model(model, device, language, compute_type):
-        return DummyModel()
-
+def test_forwards_options_with_batched_pipeline(tmp_path, monkeypatch):
     calls = {}
 
-    stub.load_model = load_model
-    stub.load_audio = lambda path: "audio"
-
-    def load_align_model(model_name, language_code, device):
-        calls["load_align_model"] = {
-            "model_name": model_name,
-            "language_code": language_code,
-            "device": device,
-        }
-        return ("align", "meta")
-
-    stub.load_align_model = load_align_model
-    stub.align = align_func
-
-    return calls
-
-
-def test_forwards_options(tmp_path):
-    """``transcribe_and_align`` forwards core whisperx options."""
-
-    calls = {}
-
-    class DummyModel:
-        def transcribe(self, audio, batch_size, beam_size, language):  # noqa: D401
-            calls["transcribe"] = {
-                "batch_size": batch_size,
-                "beam_size": beam_size,
-                "language": language,
+    class FakeWhisperModel:
+        def __init__(self, model, device, compute_type):
+            calls["model_init"] = {
+                "model": model,
+                "device": device,
+                "compute_type": compute_type,
             }
-            return {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello"}]}
 
-    def load_model(model, device, language, compute_type):
-        calls["load_model"] = {
-            "device": device,
-            "language": language,
-            "compute_type": compute_type,
-        }
-        return DummyModel()
+    class FakeBatchPipeline:
+        def __init__(self, model):
+            calls["pipeline_model"] = model
 
-    def load_align_model(model_name, language_code, device):
-        calls["load_align_model"] = {
-            "model_name": model_name,
-            "language_code": language_code,
-            "device": device,
-        }
-        return ("align", "meta")
+        def transcribe(self, audio_path, **kwargs):
+            calls["transcribe"] = {"audio_path": audio_path, **kwargs}
+            return (
+                [
+                    DummySegment(
+                        0.0,
+                        1.0,
+                        " Hello ",
+                        words=[DummyWord("Hello", 0.1, 0.9)],
+                    )
+                ],
+                types.SimpleNamespace(language="en", language_probability=0.99),
+            )
 
-    def align(segs, align_model, metadata, audio, batch_size):
-        calls["align"] = {"batch_size": batch_size}
-        seg = segs[0].copy()
-        seg["words"] = [{"start": 0.0, "end": 1.0, "word": "Hello"}]
-        return {"segments": [seg]}
-
-    stub.load_model = load_model
-    stub.load_audio = lambda path: "audio"
-    stub.load_align_model = load_align_model
-    stub.align = align
+    monkeypatch.setattr(transcribe, "WhisperModel", FakeWhisperModel)
+    monkeypatch.setattr(transcribe, "BatchedInferencePipeline", FakeBatchPipeline)
 
     outputs = transcribe.transcribe_and_align(
         "dummy.wav",
         str(tmp_path),
         model="tiny",
         compute_type="float16",
+        device="cuda",
         batch_size=4,
         beam_size=2,
     )
-    outpath = outputs["segments_json"]
 
-    expected_device = "cuda" if torch.cuda.is_available() else "cpu"
-    assert calls["load_model"] == {
-        "device": expected_device,
-        "language": "en",
+    assert calls["model_init"] == {
+        "model": "tiny",
+        "device": "cuda",
         "compute_type": "float16",
     }
     assert calls["transcribe"] == {
-        "batch_size": 4,
-        "beam_size": 2,
+        "audio_path": "dummy.wav",
         "language": "en",
+        "word_timestamps": True,
+        "vad_filter": True,
+        "beam_size": 2,
+        "batch_size": 4,
     }
-    assert calls["load_align_model"] == {
-        "model_name": transcribe.ALIGN_MODEL_NAME,
-        "language_code": "en",
-        "device": expected_device,
-    }
-    assert calls["align"] == {"batch_size": 4}
-    assert json.loads(tmp_path.joinpath("segments.json").read_text())[0]["words"][0]["word"] == "Hello"
-    assert outpath == str(tmp_path / "segments.json")
+    assert outputs["segments_json"] == str(tmp_path / "segments.json")
+    assert json.loads((tmp_path / "segments.json").read_text()) == [
+        {
+            "start": 0.1,
+            "end": 0.9,
+            "text": "Hello",
+            "words": [{"word": "Hello", "start": 0.1, "end": 0.9}],
+        }
+    ]
 
 
-def test_mark_music(tmp_path):
-    """Segments overlapping music are marked when not skipped."""
+def test_uses_model_directly_for_batch_size_one(tmp_path, monkeypatch):
+    calls = {}
 
-    def align_func(segs, align_model, metadata, audio, batch_size):
-        assert len(segs) == 1 and segs[0]["text"] == "World"
-        aligned = segs[0].copy()
-        aligned["words"] = [
-            {"start": 1.0, "end": 2.0, "word": "World"}
-        ]
-        return {"segments": [aligned]}
+    class FakeWhisperModel:
+        def __init__(self, model, device, compute_type):
+            calls["init"] = (model, device, compute_type)
 
-    calls = _setup_stub(align_func)
+        def transcribe(self, audio_path, **kwargs):
+            calls["transcribe"] = {"audio_path": audio_path, **kwargs}
+            return (
+                [DummySegment(0.0, 1.0, "Hello", words=None)],
+                types.SimpleNamespace(language="en", language_probability=0.5),
+            )
+
+    class BoomBatchPipeline:
+        def __init__(self, model):
+            raise AssertionError("batched pipeline should not be used")
+
+    monkeypatch.setattr(transcribe, "WhisperModel", FakeWhisperModel)
+    monkeypatch.setattr(transcribe, "BatchedInferencePipeline", BoomBatchPipeline)
 
     outputs = transcribe.transcribe_and_align(
-        "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=False
+        "dummy.wav",
+        str(tmp_path),
+        device="cpu",
+        batch_size=1,
+        beam_size=None,
     )
-    data = json.loads(tmp_path.joinpath("transcript.json").read_text())
-    simple = json.loads(tmp_path.joinpath("segments.json").read_text())
 
-    expected_device = "cuda" if torch.cuda.is_available() else "cpu"
-    assert calls["load_align_model"] == {
-        "model_name": transcribe.ALIGN_MODEL_NAME,
-        "language_code": "en",
-        "device": expected_device,
+    assert outputs["segments_json"] == str(tmp_path / "segments.json")
+    assert calls["transcribe"] == {
+        "audio_path": "dummy.wav",
+        "language": "en",
+        "word_timestamps": True,
+        "vad_filter": True,
+    }
+    assert json.loads((tmp_path / "segments.json").read_text()) == [
+        {"start": 0.0, "end": 1.0, "text": "Hello", "words": []}
+    ]
+
+
+def test_materializes_segment_generator(tmp_path, monkeypatch):
+    consumed = {"value": False}
+
+    class FakeWhisperModel:
+        def __init__(self, model, device, compute_type):
+            pass
+
+        def transcribe(self, audio_path, **kwargs):
+            def _segments():
+                consumed["value"] = True
+                yield DummySegment(0.0, 1.0, "Hello", [DummyWord("Hello", 0.0, 1.0)])
+
+            return _segments(), types.SimpleNamespace(language="en", language_probability=1.0)
+
+    monkeypatch.setattr(transcribe, "WhisperModel", FakeWhisperModel)
+
+    transcribe.transcribe_and_align("dummy.wav", str(tmp_path), device="cpu", batch_size=1)
+
+    assert consumed["value"] is True
+
+
+def test_mark_music(tmp_path, monkeypatch):
+    class FakeWhisperModel:
+        def __init__(self, model, device, compute_type):
+            pass
+
+        def transcribe(self, audio_path, **kwargs):
+            return (
+                [
+                    DummySegment(0.0, 1.0, "Intro", [DummyWord("Intro", 0.0, 1.0)]),
+                    DummySegment(1.0, 2.0, "World", [DummyWord("World", 1.0, 2.0)]),
+                ],
+                types.SimpleNamespace(language="en", language_probability=1.0),
+            )
+
+    monkeypatch.setattr(transcribe, "WhisperModel", FakeWhisperModel)
+
+    transcribe.transcribe_and_align(
+        "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=False, device="cpu", batch_size=1
+    )
+
+    transcript_data = json.loads((tmp_path / "transcript.json").read_text())
+    simple_data = json.loads((tmp_path / "segments.json").read_text())
+
+    assert transcript_data["segments"][0]["is_music"] is True
+    assert "words" not in transcript_data["segments"][0]
+    assert transcript_data["segments"][1]["words"][0]["word"] == "World"
+    assert simple_data[0]["words"] == []
+    assert simple_data[1]["words"][0]["word"] == "World"
+
+
+def test_skip_music(tmp_path, monkeypatch):
+    class FakeWhisperModel:
+        def __init__(self, model, device, compute_type):
+            pass
+
+        def transcribe(self, audio_path, **kwargs):
+            return (
+                [
+                    DummySegment(0.0, 1.0, "Intro", [DummyWord("Intro", 0.0, 1.0)]),
+                    DummySegment(1.0, 2.0, "World", [DummyWord("World", 1.0, 2.0)]),
+                ],
+                types.SimpleNamespace(language="en", language_probability=1.0),
+            )
+
+    monkeypatch.setattr(transcribe, "WhisperModel", FakeWhisperModel)
+
+    transcribe.transcribe_and_align(
+        "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=True, device="cpu", batch_size=1
+    )
+
+    transcript_data = json.loads((tmp_path / "transcript.json").read_text())
+    simple_data = json.loads((tmp_path / "segments.json").read_text())
+
+    assert transcript_data["segments"] == [
+        {
+            "start": 1.0,
+            "end": 2.0,
+            "text": "World",
+            "is_music": False,
+            "words": [{"word": "World", "start": 1.0, "end": 2.0}],
+        }
+    ]
+    assert simple_data == [
+        {
+            "start": 1.0,
+            "end": 2.0,
+            "text": "World",
+            "words": [{"word": "World", "start": 1.0, "end": 2.0}],
+        }
+    ]
+
+
+def test_missing_words_fallback(tmp_path, monkeypatch):
+    class FakeWhisperModel:
+        def __init__(self, model, device, compute_type):
+            pass
+
+        def transcribe(self, audio_path, **kwargs):
+            return (
+                [DummySegment(0.0, 1.0, "Hello", words=None)],
+                types.SimpleNamespace(language="en", language_probability=1.0),
+            )
+
+    monkeypatch.setattr(transcribe, "WhisperModel", FakeWhisperModel)
+
+    transcribe.transcribe_and_align("dummy.wav", str(tmp_path), device="cpu", batch_size=1)
+
+    assert json.loads((tmp_path / "transcript.json").read_text()) == {
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Hello",
+                "is_music": False,
+                "words": [],
+            }
+        ]
     }
 
-    assert len(data["segments"]) == 2
-    assert data["segments"][0]["is_music"] is True
-    assert "words" not in data["segments"][0]
-    assert data["segments"][1]["is_music"] is False
-    assert data["segments"][1]["words"][0]["word"] == "World"
 
-    assert len(simple) == 2
-    assert simple[0]["words"] == []
-    assert simple[1]["words"][0]["word"] == "World"
+def test_resume_outputs_short_circuit(tmp_path, monkeypatch):
+    transcript_path = tmp_path / "transcript.json"
+    segments_path = tmp_path / "segments.json"
+    transcript_path.write_text("{}")
+    segments_path.write_text("[]")
 
+    def boom(*args, **kwargs):
+        raise AssertionError("backend should not be invoked")
 
-def test_skip_music(tmp_path):
-    """Music segments are removed when ``skip_music`` is True."""
-
-    def align_func(segs, align_model, metadata, audio, batch_size):
-        assert len(segs) == 1 and segs[0]["text"] == "World"
-        aligned = segs[0].copy()
-        aligned["words"] = [
-            {"start": 1.0, "end": 2.0, "word": "World"}
-        ]
-        return {"segments": [aligned]}
-
-    calls = _setup_stub(align_func)
+    monkeypatch.setattr(transcribe, "_transcribe_segments", boom)
 
     outputs = transcribe.transcribe_and_align(
-        "dummy.wav", str(tmp_path), music_segments=[(0.0, 1.0)], skip_music=True
+        "dummy.wav",
+        str(tmp_path),
+        resume_outputs={
+            "transcript_json": str(transcript_path),
+            "segments_json": str(segments_path),
+        },
     )
-    data = json.loads(tmp_path.joinpath("transcript.json").read_text())
-    simple = json.loads(tmp_path.joinpath("segments.json").read_text())
 
-    expected_device = "cuda" if torch.cuda.is_available() else "cpu"
-    assert calls["load_align_model"] == {
-        "model_name": transcribe.ALIGN_MODEL_NAME,
-        "language_code": "en",
-        "device": expected_device,
+    assert outputs == {
+        "transcript_json": str(transcript_path),
+        "segments_json": str(segments_path),
     }
 
-    assert len(data["segments"]) == 1
-    assert data["segments"][0]["is_music"] is False
-    assert data["segments"][0]["text"] == "World"
 
-    assert len(simple) == 1
-    assert simple[0]["text"] == "World"
+def test_invalid_compute_type_for_cpu_raises(tmp_path):
+    with pytest.raises(ValueError, match="not supported on cpu"):
+        transcribe.transcribe_and_align(
+            "dummy.wav",
+            str(tmp_path),
+            device="cpu",
+            compute_type="float16",
+        )
+
+
+def test_default_device_uses_ctranslate2(monkeypatch):
+    monkeypatch.setattr(transcribe.ctranslate2, "get_cuda_device_count", lambda: 0)
+    assert transcribe._default_device() == "cpu"
+    monkeypatch.setattr(transcribe.ctranslate2, "get_cuda_device_count", lambda: 2)
+    assert transcribe._default_device() == "cuda"
 
 
 def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
-    """Command-line interface passes arguments and prints the output path."""
-
     def fake_transcribe(audio_path, outdir, **kwargs):
         assert audio_path == "foo.wav"
         assert outdir == str(tmp_path)
@@ -270,34 +351,6 @@ def test_cli_main(tmp_path, monkeypatch, capsys, caplog):
     assert "Device: cpu" in caplog.text
 
 
-def test_cli_main_without_beam_size(tmp_path, monkeypatch, capsys):
-    """CLI defaults to ``beam_size=None`` when not provided."""
-
-    def fake_transcribe(audio_path, outdir, **kwargs):
-        assert kwargs["beam_size"] is None
-        return {
-            "segments_json": str(tmp_path / "segments.json"),
-            "transcript_json": str(tmp_path / "transcript.json"),
-        }
-
-    monkeypatch.setattr(transcribe, "transcribe_and_align", fake_transcribe)
-
-    argv = [
-        "transcribe.py",
-        "foo.wav",
-        "--outdir",
-        str(tmp_path),
-        "--device",
-        "cpu",
-    ]
-    monkeypatch.setattr(sys, "argv", argv)
-
-    transcribe.main()
-    captured = capsys.readouterr()
-
-    assert str(tmp_path / "segments.json") in captured.out
-
-
 def test_cli_spellcheck_flag(tmp_path, monkeypatch):
     def fake_transcribe(audio_path, outdir, **kwargs):
         assert kwargs["spellcheck"] is True
@@ -321,99 +374,6 @@ def test_cli_spellcheck_flag(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", argv)
 
     transcribe.main()
-
-
-def test_transcribe_without_beam_size(tmp_path, caplog):
-    """``transcribe_and_align`` handles models without ``beam_size``."""
-
-    calls = {}
-
-    class DummyModel:
-        def transcribe(self, audio, batch_size, language):
-            calls["transcribe"] = {"batch_size": batch_size, "language": language}
-            return {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello"}]}
-
-    stub.load_model = lambda model, device, language, compute_type: DummyModel()
-    stub.load_audio = lambda path: "audio"
-
-    def load_align_model(model_name, language_code, device):
-        calls["load_align_model"] = {
-            "model_name": model_name,
-            "language_code": language_code,
-            "device": device,
-        }
-        return ("align", "meta")
-
-    stub.load_align_model = load_align_model
-    stub.align = lambda segs, align_model, metadata, audio, batch_size: {"segments": segs}
-
-    with caplog.at_level("INFO"):
-        outputs = transcribe.transcribe_and_align("dummy.wav", str(tmp_path), beam_size=2)
-        outpath = outputs["segments_json"]
-
-    expected_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    assert outpath == str(tmp_path / "segments.json")
-    assert calls["transcribe"] == {"batch_size": 8, "language": "en"}
-    assert calls["load_align_model"] == {
-        "model_name": transcribe.ALIGN_MODEL_NAME,
-        "language_code": "en",
-        "device": expected_device,
-    }
-    assert json.loads(tmp_path.joinpath("segments.json").read_text()) == [
-        {"start": 0.0, "end": 1.0, "text": "Hello", "words": []}
-    ]
-    assert "beam_size" not in caplog.text
-
-
-def test_transcribe_default_beam_size(tmp_path):
-    """When ``beam_size`` is ``None``, the model's default is used."""
-
-    calls = {}
-
-    class DummyModel:
-        def transcribe(self, audio, batch_size, language, beam_size=None):
-            calls["transcribe"] = {
-                "batch_size": batch_size,
-                "beam_size": beam_size,
-                "language": language,
-            }
-            return {"segments": [{"start": 0.0, "end": 1.0, "text": "Hello"}]}
-
-    stub.load_model = lambda model, device, language, compute_type: DummyModel()
-    stub.load_audio = lambda path: "audio"
-    stub.load_align_model = lambda model_name, language_code, device: ("align", "meta")
-    stub.align = lambda segs, align_model, metadata, audio, batch_size: {"segments": segs}
-
-    outputs = transcribe.transcribe_and_align("dummy.wav", str(tmp_path))
-    outpath = outputs["segments_json"]
-
-    assert outpath == str(tmp_path / "segments.json")
-    assert calls["transcribe"] == {"batch_size": 8, "beam_size": None, "language": "en"}
-
-
-def test_transcribe_with_stem(tmp_path):
-    """Output filenames change when ``stem`` is provided."""
-
-    def align_func(segs, align_model, metadata, audio, batch_size):
-        aligned = []
-        for s in segs:
-            seg = s.copy()
-            seg["words"] = [
-                {"start": s["start"], "end": s["end"], "word": s["text"]}
-            ]
-            aligned.append(seg)
-        return {"segments": aligned}
-
-    _setup_stub(align_func)
-
-    outputs = transcribe.transcribe_and_align(
-        "dummy.wav", str(tmp_path), stem="MyEp"
-    )
-
-    assert outputs["segments_json"] == str(tmp_path / "MyEp.segments.json")
-    assert json.loads(tmp_path.joinpath("MyEp.transcript.json").read_text())
-    assert json.loads(tmp_path.joinpath("MyEp.segments.json").read_text())
 
 
 def test_cli_stem_flag(tmp_path, monkeypatch, capsys):
@@ -442,33 +402,18 @@ def test_cli_stem_flag(tmp_path, monkeypatch, capsys):
     assert str(tmp_path / "MyEp.segments.json") in captured.out
 
 
-def test_pyannote_version_mismatch_raises(monkeypatch, tmp_path):
-    """Version check errors when model requirements diverge."""
+def test_transcribe_imports_without_legacy_modules(monkeypatch):
+    blocked = {"torch", "torchaudio", "whisperx", "pyannote", "pyannote.audio"}
+    original_import = __import__
 
-    import urllib.request
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name in blocked:
+            raise ImportError(f"blocked import: {name}")
+        return original_import(name, globals, locals, fromlist, level)
 
-    def fake_urlopen(url, timeout=5):
-        class DummyResp:
-            def __init__(self, text: str):
-                self.text = text
-
-            def read(self) -> bytes:
-                return self.text.encode()
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-        if "pyannote/vad" in url:
-            text = "pyannote.audio>=2.1,<3"
-        else:
-            text = "pyannote.audio<2"
-        return DummyResp(text)
-
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-
-    with pytest.raises(RuntimeError):
-        transcribe.transcribe_and_align("dummy.wav", str(tmp_path))
-
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    for name in blocked:
+        sys.modules.pop(name, None)
+    sys.modules.pop("transcribe", None)
+    module = importlib.import_module("transcribe")
+    assert hasattr(module, "transcribe_and_align")

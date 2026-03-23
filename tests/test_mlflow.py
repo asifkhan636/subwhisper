@@ -2,15 +2,17 @@ import builtins
 import sys
 import types
 from pathlib import Path
+from importlib.machinery import ModuleSpec
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-sys.modules["whisperx"] = types.ModuleType("whisperx")
-sys.modules["torch"] = types.ModuleType("torch")
-sys.modules["noisereduce"] = types.ModuleType("noisereduce")
+for name in ["whisperx", "torch", "noisereduce"]:
+    mod = types.ModuleType(name)
+    mod.__spec__ = ModuleSpec(name, loader=None)
+    sys.modules[name] = mod
 from experiment import SubtitleExperiment
 sys.modules.pop("whisperx", None)
 sys.modules.pop("torch", None)

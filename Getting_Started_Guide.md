@@ -142,7 +142,7 @@ If you prefer the original 3-step flow:
 python preproc.py --input video.mp4 --normalize --outdir preproc
 ```
 
-2) Transcribe + align
+2) Transcribe + word timestamps
 
 ```bash
 python transcribe.py preproc/normalized.wav --outdir transcript --device cpu

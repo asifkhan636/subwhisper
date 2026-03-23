@@ -6,10 +6,6 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple, Set
 
-from audio_backend import setup_torchaudio_backend
-
-setup_torchaudio_backend()
-
 from preproc import preprocess_pipeline
 from transcribe import transcribe_and_align
 from subtitle_pipeline import load_segments, enforce_limits, write_outputs
@@ -25,7 +21,6 @@ from run_state import (
     CACHE_DIR,
     MANIFEST_SUFFIX,
 )
-from vad import warn_if_incompatible_pyannote
 
 logger = logging.getLogger(__name__)
 
@@ -276,12 +271,10 @@ def _process_one(
 
 
 def main() -> int:
-    # Halt if ``pyannote.audio`` is incompatible with the expected VAD model.
-    warn_if_incompatible_pyannote()
     p = argparse.ArgumentParser(description="subwhisper - single command pipeline")
     p.add_argument("--input", required=True, help="Input media file or directory")
     p.add_argument("--output-root", help="Root directory for outputs (default: same as input file parent for single-file; for folder, mirrors per file parent)")
-    p.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="Device for WhisperX")
+    p.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="Device for Faster-Whisper")
     p.add_argument("--skip-music", action="store_true", help="Skip segments overlapping detected music")
     p.add_argument(
         "--enhanced-music-detection",

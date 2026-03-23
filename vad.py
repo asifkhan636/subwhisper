@@ -1,106 +1,107 @@
-"""Utilities for loading and validating Pyannote VAD models."""
+"""Utilities for loading Faster-Whisper's Silero VAD."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
-from packaging import version
-from packaging.requirements import Requirement
-from packaging.specifiers import SpecifierSet
-import urllib.request
-from typing import Iterable
+from typing import Iterable, Optional
 
-# Requires ``pyannote.audio`` >=2 according to the model card
-VAD_MODEL = "pyannote/vad"
+import numpy as np
+import soundfile as sf
+from faster_whisper.vad import VadOptions, get_speech_timestamps
+
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class SpeechSegment:
+    """Simple speech span used by preprocessing tests and callers."""
+
+    start: float
+    end: float
+    confidence: float = 1.0
+
+
 def warn_if_incompatible_pyannote(models: Iterable[str] | None = None) -> None:
-    """Ensure ``pyannote.audio`` matches the model expectations.
+    """Deprecated compatibility shim kept for import stability."""
 
-    Parameters
-    ----------
-    models:
-        Additional HuggingFace model IDs whose ``requirements.txt`` should be
-        inspected for a ``pyannote.audio`` constraint. ``VAD_MODEL`` is always
-        included.
-
-    The function reads the ``requirements.txt`` for each model from the
-    HuggingFace Hub to determine the expected ``pyannote.audio`` version. When
-    the requirement cannot be determined (e.g. due to missing network
-    connectivity) the function falls back to a simple major version check
-    requiring ``>=2``. When an incompatibility is detected the function logs an
-    actionable error message and raises ``RuntimeError`` to halt execution.
-    """
-
-    try:
-        import pyannote.audio  # type: ignore
-    except Exception as exc:  # pragma: no cover - depends on environment
-        msg = f"pyannote.audio not available: {exc}"
-        logger.error(msg)
-        raise RuntimeError(msg) from exc
-
-    installed = version.parse(pyannote.audio.__version__)
-
-    to_check = [VAD_MODEL]
-    if models:
-        to_check.extend(models)
-
-    for model in to_check:
-        expected: SpecifierSet | None = None
-        try:  # pragma: no cover - network dependent
-            url = f"https://huggingface.co/{model}/raw/main/requirements.txt"
-            with urllib.request.urlopen(url, timeout=5) as resp:  # type: ignore[arg-type]
-                text = resp.read().decode()
-            for line in text.splitlines():
-                line = line.strip()
-                if line.startswith("pyannote.audio"):
-                    req = Requirement(line)
-                    expected = req.specifier
-                    break
-        except Exception:
-            # Unable to fetch requirement; fall back to major version check
-            pass
-
-        if expected and installed not in expected:
-            msg = (
-                f"{model} expects pyannote.audio {expected}, "
-                f"but {pyannote.audio.__version__} is installed."
-                " Please install a compatible version."
-            )
-            logger.error(msg)
-            raise RuntimeError(msg)
-
-    if installed.major < 2:  # pragma: no cover - simple branch
-        msg = (
-            f"pyannote.audio {pyannote.audio.__version__} detected; "
-            f"upgrade to >=2.0 for {', '.join(to_check)}."
-        )
-        logger.error(msg)
-        raise RuntimeError(msg)
-
-    logger.debug(
-        "pyannote.audio %s is compatible with %s",
-        pyannote.audio.__version__,
-        ", ".join(to_check),
-    )
     return None
 
 
-def load_vad_model(device: str | None = None):
-    """Load the pretrained Pyannote VAD pipeline.
+class SileroVADPipeline:
+    """Thin wrapper around Faster-Whisper's Silero VAD helpers."""
 
-    Parameters
-    ----------
-    device:
-        Optional device string (e.g., ``"cpu"`` or ``"cuda"``) to move the
-        pipeline to after loading.
+    def __init__(
+        self,
+        threshold: float = 0.5,
+        min_speech_duration_ms: int = 0,
+        min_silence_duration_ms: int = 2000,
+        speech_pad_ms: int = 400,
+    ) -> None:
+        self.options = VadOptions(
+            threshold=threshold,
+            min_speech_duration_ms=min_speech_duration_ms,
+            min_silence_duration_ms=min_silence_duration_ms,
+            speech_pad_ms=speech_pad_ms,
+        )
+
+    @staticmethod
+    def _load_audio(inp) -> tuple[np.ndarray, int]:
+        if isinstance(inp, dict):
+            if inp.get("waveform") is not None:
+                waveform = np.asarray(inp["waveform"], dtype=np.float32)
+                if waveform.ndim > 1:
+                    waveform = waveform.mean(axis=0)
+                return waveform, int(inp.get("sample_rate", 16000))
+            inp = inp.get("audio")
+
+        if isinstance(inp, np.ndarray):
+            waveform = np.asarray(inp, dtype=np.float32)
+            if waveform.ndim > 1:
+                waveform = waveform.mean(axis=0)
+            return waveform, 16000
+
+        waveform, sampling_rate = sf.read(str(inp), dtype="float32")
+        if waveform.ndim > 1:
+            waveform = waveform.mean(axis=1)
+        return waveform, int(sampling_rate)
+
+    def __call__(self, inp) -> list[SpeechSegment]:
+        waveform, sampling_rate = self._load_audio(inp)
+        chunks = get_speech_timestamps(
+            waveform,
+            vad_options=self.options,
+            sampling_rate=sampling_rate,
+        )
+        return [
+            SpeechSegment(
+                start=chunk["start"] / sampling_rate,
+                end=chunk["end"] / sampling_rate,
+            )
+            for chunk in chunks
+        ]
+
+
+def load_vad_model(
+    device: Optional[str] = None,
+    threshold: float = 0.5,
+    min_speech_duration_ms: int = 0,
+    min_silence_duration_ms: int = 2000,
+    speech_pad_ms: int = 400,
+):
+    """Load a Silero VAD wrapper.
+
+    ``device`` is accepted for compatibility but ignored since the bundled
+    Silero model runs through ONNX Runtime on CPU.
     """
-    from pyannote.audio import Pipeline  # imported lazily
 
-    logger.info("Loading VAD pipeline: %s", VAD_MODEL)
-    pipeline = Pipeline.from_pretrained(VAD_MODEL)
     if device:
-        pipeline.to(device)
-    return pipeline
-
+        logger.debug("Ignoring unsupported VAD device override: %s", device)
+    logger.info("Loading Silero VAD (threshold=%s)", threshold)
+    return SileroVADPipeline(
+        threshold=threshold,
+        min_speech_duration_ms=min_speech_duration_ms,
+        min_silence_duration_ms=min_silence_duration_ms,
+        speech_pad_ms=speech_pad_ms,
+    )

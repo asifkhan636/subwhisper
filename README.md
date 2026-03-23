@@ -4,11 +4,9 @@
 
 `subwhisper` is a small utility for generating subtitle files from a
 directory of videos.  It uses
-[WhisperX](https://github.com/m-bain/whisperX) to perform speech-to-text
-transcription.  WhisperX releases prior to `vad_filter` support require a
-separate voice‑activity detection (VAD) step if you need to trim silence.
-The goal is to provide an easily hackable starting point for automated
-subtitle workflows.
+[Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) to perform
+speech-to-text transcription and word timestamp extraction. The goal is to
+provide an easily hackable starting point for automated subtitle workflows.
 
 ## Installation
 
@@ -108,21 +106,14 @@ apply changes.
 
 ## Installation Prerequisites
 
-The scripts rely on a few external tools and Python packages. They have been
-tested with `whisperx>=3.4.2`, `torch>=2.5.1`, `pyannote.audio>=3.3.2`, and
-`ctranslate2>=4.4` (modern releases use `importlib.metadata` instead of
-`pkg_resources`). If your environment is missing these minimum versions, the CLI utilities will
-report the issue on startup. WhisperX 3.4.x does not support the `vad_filter`
-argument; to apply VAD you must either upgrade to a release that implements it
-or run VAD separately with `whisperx.load_vad_model` /
-`whisperx.detect_voice_activity` before transcription.
+The scripts rely on a few external tools and Python packages. They are tested
+with `faster-whisper>=1.2,<2`, `ctranslate2>=4.4,<5`, `numpy>=1.26,<3`,
+`librosa>=0.10`, and `noisereduce>=3.0`.
 
 ### Version compatibility
 
-Pretrained Pyannote VAD models are sensitive to dependency versions. This
-project uses the `pyannote/voice-activity-detection` pipeline from
-`pyannote.audio` 3.x. Use the pins from `requirements.txt` (or
-`environment.yml`) to avoid runtime warnings or failures:
+Use the pins from `requirements.txt` (or `environment.yml`) to keep the
+runtime aligned with Faster-Whisper and the bundled Silero VAD:
 
 ```bash
 pip install -r requirements.txt
@@ -130,23 +121,18 @@ pip install -r requirements.txt
 conda env create -f environment.yml
 ```
 
-These files ensure that `torch>=2.5.1`, `pyannote.audio>=3.3.2`, and
-`ctranslate2>=4.4` are installed. The CLI performs a startup check and warns
-when incompatible versions are detected.
+These files ensure that `faster-whisper`, `ctranslate2`, `numpy`, and
+`soundfile` stay on a tested combination.
 
 ### Required Software
 
 - **Python**: 3.9 or newer
 - **Conda**: for managing the environment
 - **FFmpeg**: used for audio extraction
-- **Python packages**: `torch>=2.5.1`, `pyannote.audio>=3.3.2`, `lightning>=2.5.2`, `speechbrain>=1.0`, `whisperx>=3.4.2,<4`, `librosa>=0.10`, `noisereduce>=3.0`
+- **Python packages**: `faster-whisper>=1.2,<2`, `ctranslate2>=4.4,<5`, `numpy>=1.26,<3`, `librosa>=0.10`, `noisereduce>=3.0`, `soundfile>=0.12`
 
-On Windows, `torchaudio` must use the `soundfile` backend. Subwhisper
-configures this automatically during startup, suppresses
-`speechbrain.utils.torch_audio_backend` warnings, and sets
-`TORCHAUDIO_ENABLE_SOX_IO_BACKEND=0` to silence messages about the unused
-`sox_io` backend. Ensure the `soundfile` package and its native dependencies
-are installed to avoid import errors.
+Ensure the `soundfile` package and its native dependencies are installed to
+avoid import errors.
 
 ### Create a Conda Environment
 
@@ -157,21 +143,14 @@ conda env create -f environment.yml
 conda activate subwhisper
 ```
 
-This installs Python, `torch>=2.5.1`, `pyannote.audio>=3.3.2`,
-`speechbrain>=1.0`, `whisperx>=3.4.2,<4`, and other dependencies. The `torch`
-entry is CPU‑only by default; edit `environment.yml` to choose a CUDA‑enabled
-build or add optional packages.
-
-> **Note:** `pyannote.audio` 3.x depends on `lightning` and uses
-> `importlib.metadata`, avoiding legacy `pkg_resources` warnings.
+This installs Python, `faster-whisper>=1.2,<2`, `ctranslate2>=4.4,<5`,
+`numpy>=1.26,<3`, and other dependencies.
 
 #### Upgrading dependencies
 
-If you need newer features from `pyannote.audio`, `torch`, or `speechbrain`,
-check model compatibility before upgrading. Installing versions that differ
-from the pinned ones above can lead to runtime warnings or failures unless you
-also obtain pretrained models built for those releases. Refer to the respective
-project documentation for migration notes.
+If you need newer Faster-Whisper or CTranslate2 features, keep the dependency
+set coherent. Installing arbitrary versions can lead to runtime failures or
+performance regressions.
 
 If you prefer to configure things manually:
 
@@ -180,24 +159,12 @@ conda create -n subwhisper python=3.10
 conda activate subwhisper
 
 # Install dependencies
- pip install "torch>=2.5.1" "pyannote.audio>=3.3.2" "lightning>=2.5.2" "speechbrain>=1.0" "whisperx>=3.4.2,<4"
+pip install "ctranslate2>=4.4,<5" "faster-whisper>=1.2,<2" "numpy>=1.26,<3" "librosa>=0.10" "noisereduce>=3.0" "soundfile>=0.12"
 # Install ffmpeg (choose one of the following)
 conda install -c conda-forge ffmpeg    # via conda
 # or
 sudo apt-get install ffmpeg            # on Debian/Ubuntu
 ```
-
-#### Upgrading PyTorch Lightning checkpoints
-
-Older models saved with previous versions of Lightning may need to be
-upgraded before use. If you see a warning about `pytorch_model.bin`, run:
-
-```bash
-python -m lightning.pytorch.utilities.upgrade_checkpoint /path/to/pytorch_model.bin
-```
-
-This converts the checkpoint to the latest format so it can be loaded without
-warnings.
 
 ## Docker
 
@@ -292,7 +259,7 @@ Additional options:
 ## Phase-2: Transcription & Alignment
 
 `transcribe.py` converts the cleaned audio from Phase 1 into time-aligned
-segments using WhisperX. It can also ingest a `music_segments.json` file
+segments using Faster-Whisper word timestamps. It can also ingest a `music_segments.json` file
 from Phase 1 and, with `--skip-music`, exclude those ranges from the
 transcript.
 
@@ -314,7 +281,7 @@ python transcribe.py preproc/normalized.wav --outdir transcript \
 - `--batch-size N` – batch size for both transcription and alignment
   (default `8`).
 - `--beam-size N` – beam search width used during decoding (default `5`).
-- `--compute-type TYPE` – precision for WhisperX such as `float16` or
+- `--compute-type TYPE` – precision for Faster-Whisper such as `float16` or
   `float32` (default `float32`).
 - `--device DEVICE` – torch device to run on; defaults to `cuda` when a GPU
   is available, otherwise `cpu`.
@@ -325,7 +292,7 @@ python transcribe.py preproc/normalized.wav --outdir transcript \
 
 ### Output files
 
-- `transcript.json` – raw WhisperX segments with an additional `is_music`
+- `transcript.json` – raw Faster-Whisper segments with an additional `is_music`
   boolean.
 - `segments.json` – simplified segments used by downstream tooling:
 
@@ -479,5 +446,5 @@ pytest tests/test_api.py
 ```
 
 These tests rely on lightweight stubs, so they execute quickly without
-installing heavy runtime dependencies like `ffmpeg` or `whisperx`.
+installing heavy runtime dependencies like `ffmpeg`.
 

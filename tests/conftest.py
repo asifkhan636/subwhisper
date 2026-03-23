@@ -1,9 +1,12 @@
 import sys
 import types
+from importlib.machinery import ModuleSpec
 import pytest
 
 
-_torchaudio_stub = types.SimpleNamespace(set_audio_backend=lambda *a, **k: None)
+_torchaudio_stub = types.ModuleType("torchaudio")
+_torchaudio_stub.set_audio_backend = lambda *a, **k: None
+_torchaudio_stub.__spec__ = ModuleSpec("torchaudio", loader=None)
 sys.modules.setdefault("torchaudio", _torchaudio_stub)
 
 # Provide a minimal ``torch`` stub required by tests and dependencies like
@@ -26,6 +29,10 @@ _torch_nn.functional = types.SimpleNamespace(
 
 _torch_types = types.ModuleType("torch.types")
 _torch_types.Number = float
+
+_torch_stub.__spec__ = ModuleSpec("torch", loader=None)
+_torch_nn.__spec__ = ModuleSpec("torch.nn", loader=None)
+_torch_types.__spec__ = ModuleSpec("torch.types", loader=None)
 
 sys.modules.setdefault("torch", _torch_stub)
 sys.modules.setdefault("torch.nn", _torch_nn)

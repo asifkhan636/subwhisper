@@ -5,10 +5,6 @@ import subprocess
 from typing import List, Optional, Tuple
 import shutil
 
-from audio_backend import setup_torchaudio_backend
-
-setup_torchaudio_backend()
-
 import importlib
 
 import librosa
@@ -378,9 +374,9 @@ def detect_music_segments(
 
         if enhanced:
             logger.info("Applying VAD mask with threshold %s", speech_threshold)
-            vad_model = vad.load_vad_model()
+            vad_model = vad.load_vad_model(threshold=speech_threshold)
             vad_result = vad_model({"audio": audio_path})
-            speech_mask = np.zeros_like(mask, dtype=float)
+            speech_mask = np.zeros_like(mask, dtype=bool)
 
             segments = []
             if isinstance(vad_result, list):
@@ -401,12 +397,11 @@ def detect_music_segments(
                 end = getattr(seg, "end", None)
                 if start is None or end is None:
                     start, end = seg[0], seg[1]
-                prob = getattr(seg, "confidence", getattr(seg, "probability", 1.0))
                 s = librosa.time_to_frames(start, sr=sr, hop_length=hop_length)
                 e = librosa.time_to_frames(end, sr=sr, hop_length=hop_length)
-                speech_mask[s:e] = prob
+                speech_mask[s:e] = True
 
-            mask[speech_mask > speech_threshold] = False
+            mask[speech_mask] = False
 
         segments: List[Tuple[float, float]] = []
         start_time: Optional[float] = None
